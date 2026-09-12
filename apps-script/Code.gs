@@ -37,6 +37,8 @@ function doGet(e) {
       return json_(flightDelays_(p.flightNo, p.force === "1"));
     if (action === "inbound")
       return json_(inbound_(p.reg, p.date, p.dep, p.depLocal, p.force === "1"));
+    if (action === "position")
+      return json_(positionLookup_(p.hex, p.reg, p.callsign));
     return json_({ ok: false, error: "unknown_action" });
   } catch (err) {
     log_("ERROR", "doGet", String(err && err.stack || err));

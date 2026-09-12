@@ -46,6 +46,7 @@
   // ---------- router ----------
 
   var PAGES = ["trips", "detail", "stats", "settings"];
+  var detailMapTimer = null; // live-map poll; cleared whenever we navigate
 
   function route() {
     var h = location.hash || "#/trips";
@@ -60,6 +61,7 @@
   }
 
   function show(page) {
+    if (detailMapTimer) { clearInterval(detailMapTimer); detailMapTimer = null; } // stop live-map poll on any navigation
     PAGES.forEach(function (p) {
       var el = $("#page-" + p);
       if (el) el.classList.toggle("active", p === page);
@@ -336,6 +338,8 @@
         '<div class="section-label">' + esc(L.detail.infoSection) + "</div>" +
         '<button class="btn" id="btn-ontime">' + esc(L.detail.ontimeBtn) + "</button>" +
         '<button class="btn" id="btn-inbound">' + esc(L.detail.inboundBtn) + "</button>" +
+        '<button class="btn" id="btn-map">' + esc(L.detail.mapBtn) + "</button>" +
+        '<div id="mini-map"></div>' +
         '<div class="msg" id="insight-msg"></div>' +
         '<div style="height:8px"></div>' +
         '<button class="btn" id="btn-ics">' + esc(L.detail.exportIcs) + "</button>" +
@@ -555,6 +559,31 @@
           imsg(txt, d.bufferMin != null && d.bufferMin < 90 ? "err" : "ok");
         }).catch(function (e) { imsg(L.common.error + ": " + e.message, "err"); });
       });
+
+      // ---- live map (adsb.lol via backend), polls while the detail page is open ----
+      function renderPosition(pos) {
+        var dep = window.AIRPORTS[f.dep_iata], arr = window.AIRPORTS[f.arr_iata];
+        $("#mini-map").innerHTML = '<div class="map-card">' + miniMapSvg(dep, arr, pos) + "</div>";
+      }
+      function pollPosition() {
+        API.position(f.aircraft_reg, f.flight_no).then(function (res) {
+          if (!res.ok) { imsg(L.common.error + ": " + (res.error || ""), "err"); return; }
+          if (!res.airborne) { imsg(L.detail.mapNotAirborne, "dim"); renderPosition(null); return; }
+          var d = res.data;
+          renderPosition(d);
+          imsg(L.detail.mapInfo.replace("{alt}", d.altFt != null ? d.altFt.toLocaleString() : "—")
+            .replace("{gs}", d.groundSpeedKt != null ? Math.round(d.groundSpeedKt) : "—")
+            .replace("{sec}", d.seenSec != null ? Math.round(d.seenSec) : "—"), "ok");
+        }).catch(function (e) { imsg(L.common.error + ": " + e.message, "err"); });
+      }
+      $("#btn-map").addEventListener("click", function () {
+        if (API.mode() !== "backend") { imsg(L.detail.fetchNoBackend, "err"); return; }
+        if (!f.aircraft_reg && !f.flight_no) { imsg(L.detail.mapNoId, "dim"); return; }
+        imsg(L.detail.mapLoading);
+        pollPosition();
+        if (detailMapTimer) clearInterval(detailMapTimer);
+        detailMapTimer = setInterval(pollPosition, 60000); // gentle poll; cleared on navigation
+      });
     }
   }
 
@@ -635,6 +664,61 @@
 
   function project(lat, lon) {
     return { x: (lon + 180) / 360 * 2000, y: (90 - lat) / 180 * 1000 };
+  }
+
+  // single-flight mini-map: dep/arr = [name,city,cc,lat,lon,tz]; pos = {lat,lon,track} or null.
+  // Handles the antimeridian: if the points span >180° lon, unwrap x by +2000 and tile the
+  // world map so trans-Pacific routes draw the short way instead of across the whole globe.
+  function miniMapSvg(dep, arr, pos) {
+    var raw = [];
+    if (dep) raw.push(project(dep[3], dep[4]));
+    if (arr) raw.push(project(arr[3], arr[4]));
+    if (pos) raw.push(project(pos.lat, pos.lon));
+    if (!raw.length) return "";
+
+    var xsRaw = raw.map(function (p) { return p.x; });
+    var wrap = (Math.max.apply(null, xsRaw) - Math.min.apply(null, xsRaw)) > 1000; // > 180°
+    function ux(x) { return wrap && x < 1000 ? x + 2000 : x; } // unwrap left points to the right
+
+    var P = {};
+    if (dep) { var d = project(dep[3], dep[4]); P.dep = { x: ux(d.x), y: d.y }; }
+    if (arr) { var a = project(arr[3], arr[4]); P.arr = { x: ux(a.x), y: a.y }; }
+    if (pos) { var p = project(pos.lat, pos.lon); P.pos = { x: ux(p.x), y: p.y }; }
+
+    var upts = [P.dep, P.arr, P.pos].filter(Boolean);
+    var xs = upts.map(function (q) { return q.x; }), ys = upts.map(function (q) { return q.y; });
+    var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+    var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+    var padX = Math.max((maxX - minX) * 0.35, 40), padY = Math.max((maxY - minY) * 0.35, 30);
+    var vbX = minX - padX, vbY = minY - padY, vbW = (maxX - minX) + 2 * padX, vbH = (maxY - minY) + 2 * padY;
+    var targetAR = 1.6, ar = vbW / vbH;
+    if (ar > targetAR) { var nh = vbW / targetAR; vbY -= (nh - vbH) / 2; vbH = nh; }
+    else if (ar < targetAR) { var nw = vbH * targetAR; vbX -= (nw - vbW) / 2; vbW = nw; }
+
+    var body = Object.keys(window.WORLD_PATHS).map(function (cc) {
+      return '<path d="' + window.WORLD_PATHS[cc] + '" fill="#1B2440" stroke="rgba(255,255,255,.06)" stroke-width="0.5"/>';
+    }).join("");
+    // draw the world once, plus a copy shifted +2000 so the map is continuous across the seam
+    var paths = '<g>' + body + "</g>" + (wrap ? '<g transform="translate(2000,0)">' + body + "</g>" : "");
+
+    var arc = "";
+    if (P.dep && P.arr) {
+      var mx = (P.dep.x + P.arr.x) / 2, my = (P.dep.y + P.arr.y) / 2 - Math.abs(P.arr.x - P.dep.x) * 0.12 - 8;
+      arc = '<path d="M' + P.dep.x.toFixed(1) + "," + P.dep.y.toFixed(1) + " Q" + mx.toFixed(1) + "," + my.toFixed(1) +
+        " " + P.arr.x.toFixed(1) + "," + P.arr.y.toFixed(1) + '" fill="none" stroke="rgba(79,195,247,.5)" stroke-width="1.5" stroke-dasharray="4 3"/>';
+    }
+    var dots = "";
+    if (P.dep) dots += '<circle cx="' + P.dep.x.toFixed(1) + '" cy="' + P.dep.y.toFixed(1) + '" r="4" fill="#8A93A8"/>';
+    if (P.arr) dots += '<circle cx="' + P.arr.x.toFixed(1) + '" cy="' + P.arr.y.toFixed(1) + '" r="4" fill="#8A93A8"/>';
+    var plane = "";
+    if (P.pos) {
+      plane = '<g transform="translate(' + P.pos.x.toFixed(1) + "," + P.pos.y.toFixed(1) + ") rotate(" + (pos.track || 0).toFixed(0) + ')">' +
+        '<circle r="7" fill="rgba(79,195,247,.25)"/>' +
+        '<path d="M0,-7 L4,5 L0,2 L-4,5 Z" fill="#4FC3F7"/></g>';
+    }
+    return '<svg viewBox="' + vbX.toFixed(1) + " " + vbY.toFixed(1) + " " + vbW.toFixed(1) + " " + vbH.toFixed(1) +
+      '" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">' +
+      paths + arc + dots + plane + "</svg>";
   }
 
   function mapSvg(airportCounts, flights, visitedCountries) {

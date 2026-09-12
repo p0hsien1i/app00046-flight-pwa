@@ -304,6 +304,16 @@
       return gget("inbound", p);
     },
 
+    position: function (reg, callsign, hex) {
+      if (!hasBackend()) return Promise.resolve({ ok: false, error: "no_backend" });
+      if (!reg && !callsign && !hex) return Promise.resolve({ ok: false, error: "no_identifier" });
+      var p = {};
+      if (hex) p.hex = hex;
+      if (reg) p.reg = reg;
+      if (callsign) p.callsign = callsign;
+      return gget("position", p);
+    },
+
     syncCalendar: function (idOrAll) {
       if (!hasBackend()) return Promise.resolve({ ok: false, error: "no_backend" });
       var payload = idOrAll === true ? { all: true } : { id: idOrAll };
