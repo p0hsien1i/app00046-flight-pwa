@@ -106,7 +106,8 @@
     if (isOther) {
       var who = f.passenger ? " · " + esc(f.passenger) : "";
       var live = f.api_status ? '<span class="pill live">' + esc(f.api_status) + "</span> " : "";
-      topRight = live + '<span class="pill watching">' + esc(L.trips.watchingBadge) + who + "</span>";
+      var cancel = cancelled ? '<span class="pill cancelled">' + esc(L.status.cancelled) + "</span> " : "";
+      topRight = cancel + live + '<span class="pill watching">' + esc(L.trips.watchingBadge) + who + "</span>";
     }
 
     return '<div class="card' + (cancelled ? " cancelled-card" : "") + '" data-id="' + esc(f.id) + '">' +
@@ -313,6 +314,11 @@
       '<div class="msg" id="detail-msg"></div>' +
       '<button class="btn primary" id="btn-save">' + esc(L.detail.save) + "</button>" +
       (isNew ? "" :
+        '<div class="section-label">' + esc(L.detail.infoSection) + "</div>" +
+        '<button class="btn" id="btn-ontime">' + esc(L.detail.ontimeBtn) + "</button>" +
+        '<button class="btn" id="btn-inbound">' + esc(L.detail.inboundBtn) + "</button>" +
+        '<div class="msg" id="insight-msg"></div>' +
+        '<div style="height:8px"></div>' +
         '<button class="btn" id="btn-ics">' + esc(L.detail.exportIcs) + "</button>" +
         '<button class="btn" id="btn-gcal">' + esc(L.detail.syncCalendar) + "</button>" +
         '<button class="btn danger" id="btn-del">' + esc(L.detail.delete) + "</button>");
@@ -384,10 +390,12 @@
         var ta = d.arr.revisedLocal || d.arr.schedLocal;
         if (ta) { $("#f-arrdate").value = ta.slice(0, 10); $("#f-arrtime").value = ta.slice(11, 16); }
       }
-      bindIata("f-dep"); bindIata("f-arr"); // refresh airport-name hints (also re-derives tz on save)
+      // refresh the airport-name hints without re-adding input listeners
+      $("#f-dep").dispatchEvent(new Event("input"));
+      $("#f-arr").dispatchEvent(new Event("input"));
     }
 
-    function doLookup(onlyBlanks) {
+    function doLookup() {
       if (API.mode() !== "backend") { msg(L.detail.fetchNoBackend, "err"); return; }
       var flightNo = $("#f-no").value.trim().toUpperCase();
       var date = $("#f-depdate").value;
@@ -443,6 +451,7 @@
     $("#btn-save").addEventListener("click", function () {
       var out = collect();
       if (!out) { msg(L.detail.invalid, "err"); return; }
+      if (out.traveler_role === "other" && !out.passenger) { msg(L.detail.whoRequired, "err"); return; }
       var d1 = window.ICS.zonedToUtc(out.dep_time_local, out.dep_tz);
       var d2 = window.ICS.zonedToUtc(out.arr_time_local, out.arr_tz);
       if (d1 && d2 && d2 <= d1) { msg(L.detail.invalidTimes, "err"); return; }
@@ -469,6 +478,58 @@
           if (res.ok) msg(L.detail.synced, "ok");
           else msg(L.detail.syncFailed + ": " + (res.error || ""), "err");
         }).catch(function (e) { msg(L.detail.syncFailed + ": " + e.message, "err"); });
+      });
+
+      // ---- insights: on-time history + inbound aircraft ----
+      function imsg(text, cls) {
+        var el = $("#insight-msg"); el.textContent = text; el.className = "msg " + (cls || "dim");
+      }
+      function fmtMedian(m) {
+        if (m == null) return "—";
+        if (m === 0) return L.detail.ontimeOnDot;
+        return m < 0 ? L.detail.ontimeEarly.replace("{m}", -m) : L.detail.ontimeLate.replace("{m}", m);
+      }
+      $("#btn-ontime").addEventListener("click", function () {
+        if (API.mode() !== "backend") { imsg(L.detail.fetchNoBackend, "err"); return; }
+        imsg(L.detail.loading);
+        API.ontime($("#f-no").value.trim().toUpperCase()).then(function (res) {
+          if (!res.ok) {
+            if (res.error === "not_found") imsg(L.detail.ontimeNone, "dim");
+            else if (res.error === "monthly_quota" || res.error === "daily_cap") imsg(L.detail.fetchQuota, "dim");
+            else imsg(L.common.error + ": " + (res.error || ""), "err");
+            return;
+          }
+          var d = res.data || {};
+          var med = fmtMedian(d.medianDelayMin);
+          var txt = d.onTimePct != null
+            ? L.detail.ontimeResult.replace("{median}", med).replace("{pct}", d.onTimePct).replace("{n}", d.samples)
+            : L.detail.ontimeResultNoPct.replace("{median}", med).replace("{n}", d.samples);
+          imsg(txt, "ok");
+        }).catch(function (e) { imsg(L.common.error + ": " + e.message, "err"); });
+      });
+      $("#btn-inbound").addEventListener("click", function () {
+        if (API.mode() !== "backend") { imsg(L.detail.fetchNoBackend, "err"); return; }
+        if (!f.aircraft_reg) { imsg(L.detail.inboundNoReg, "dim"); return; }
+        imsg(L.detail.loading);
+        var date = (f.dep_time_local || "").slice(0, 10);
+        API.inbound(f.aircraft_reg, date, f.dep_iata, f.dep_time_local).then(function (res) {
+          if (!res.ok) {
+            if (res.error === "no_inbound") imsg(L.detail.inboundNone, "dim");
+            else if (res.error === "no_reg") imsg(L.detail.inboundNoReg, "dim");
+            else if (res.error === "monthly_quota" || res.error === "daily_cap") imsg(L.detail.fetchQuota, "dim");
+            else imsg(L.common.error + ": " + (res.error || ""), "err");
+            return;
+          }
+          var d = res.data || {};
+          var arr = d.revisedArrLocal || d.schedArrLocal || "";
+          var arrShown = arr ? arr.slice(11, 16) : "?";
+          var txt = d.bufferMin != null
+            ? L.detail.inboundResult.replace("{flight}", d.flightNo).replace("{from}", d.fromIata)
+                .replace("{arr}", arrShown).replace("{status}", d.status || "?").replace("{buffer}", durText(d.bufferMin) || (d.bufferMin + "m"))
+            : L.detail.inboundNoBuffer.replace("{flight}", d.flightNo).replace("{from}", d.fromIata)
+                .replace("{arr}", arrShown).replace("{status}", d.status || "?");
+          imsg(txt, d.bufferMin != null && d.bufferMin < 90 ? "err" : "ok");
+        }).catch(function (e) { imsg(L.common.error + ": " + e.message, "err"); });
       });
     }
   }

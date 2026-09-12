@@ -289,6 +289,21 @@
       return gget("flightinfo", p);
     },
 
+    ontime: function (flightNo, force) {
+      if (!hasBackend()) return Promise.resolve({ ok: false, error: "no_backend" });
+      var p = { flightNo: flightNo };
+      if (force) p.force = "1";
+      return gget("ontime", p);
+    },
+
+    inbound: function (reg, date, depIata, depLocal, force) {
+      if (!hasBackend()) return Promise.resolve({ ok: false, error: "no_backend" });
+      if (!reg) return Promise.resolve({ ok: false, error: "no_reg" });
+      var p = { reg: reg, date: date, dep: depIata, depLocal: depLocal };
+      if (force) p.force = "1";
+      return gget("inbound", p);
+    },
+
     syncCalendar: function (idOrAll) {
       if (!hasBackend()) return Promise.resolve({ ok: false, error: "no_backend" });
       var payload = idOrAll === true ? { all: true } : { id: idOrAll };

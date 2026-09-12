@@ -33,6 +33,10 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.ICAL);
     if (action === "flightinfo")
       return json_(flightInfo_(p.flightNo, p.date, p.force === "1", p.dep));
+    if (action === "ontime")
+      return json_(flightDelays_(p.flightNo, p.force === "1"));
+    if (action === "inbound")
+      return json_(inbound_(p.reg, p.date, p.dep, p.depLocal, p.force === "1"));
     return json_({ ok: false, error: "unknown_action" });
   } catch (err) {
     log_("ERROR", "doGet", String(err && err.stack || err));
