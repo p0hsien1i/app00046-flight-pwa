@@ -299,7 +299,8 @@
     inbound: function (reg, date, depIata, depLocal, force) {
       if (!hasBackend()) return Promise.resolve({ ok: false, error: "no_backend" });
       if (!reg) return Promise.resolve({ ok: false, error: "no_reg" });
-      var p = { reg: reg, date: date, dep: depIata, depLocal: depLocal };
+      var p = { reg: reg, date: date, dep: depIata };
+      if (depLocal) p.depLocal = depLocal; // omit when empty so it never serializes as "undefined"
       if (force) p.force = "1";
       return gget("inbound", p);
     },

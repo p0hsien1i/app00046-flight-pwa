@@ -125,41 +125,50 @@ function cronHourly() {
 
 function applyChanges_(f, d, title) {
   var target = notifyTarget_(f); // pickup contact or owner default
-  var dirty = false;             // any persisted field changed
-  var gateChanges = [], delayChanges = [];
 
+  // 1) DETECT changes without mutating f yet (so a failed send can be retried next poll)
+  var nu = {}; // pending new values for notified fields
+  var gateChanges = [], delayChanges = [];
   if (d.dep) {
-    if (d.dep.gate && d.dep.gate !== f.dep_gate) { gateChanges.push("Gate " + (f.dep_gate || "—") + " → " + d.dep.gate); f.dep_gate = d.dep.gate; dirty = true; }
-    if (d.dep.terminal && d.dep.terminal !== f.dep_terminal) { gateChanges.push("Terminal " + (f.dep_terminal || "—") + " → " + d.dep.terminal); f.dep_terminal = d.dep.terminal; dirty = true; }
+    if (d.dep.gate && d.dep.gate !== f.dep_gate) { gateChanges.push("Gate " + (f.dep_gate || "—") + " → " + d.dep.gate); nu.dep_gate = d.dep.gate; }
+    if (d.dep.terminal && d.dep.terminal !== f.dep_terminal) { gateChanges.push("Terminal " + (f.dep_terminal || "—") + " → " + d.dep.terminal); nu.dep_terminal = d.dep.terminal; }
     if (d.dep.revisedLocal && d.dep.revisedLocal !== f.dep_revised_local && d.dep.revisedLocal !== f.dep_time_local) {
       delayChanges.push("Departure " + fmtLocal_(f.dep_time_local) + " → " + fmtLocal_(d.dep.revisedLocal));
-      f.dep_revised_local = d.dep.revisedLocal; dirty = true;
+      nu.dep_revised_local = d.dep.revisedLocal;
     }
   }
   if (d.arr && d.arr.revisedLocal && d.arr.revisedLocal !== f.arr_revised_local && d.arr.revisedLocal !== f.arr_time_local) {
     delayChanges.push("Arrival " + fmtLocal_(f.arr_time_local) + " → " + fmtLocal_(d.arr.revisedLocal));
-    f.arr_revised_local = d.arr.revisedLocal; dirty = true;
+    nu.arr_revised_local = d.arr.revisedLocal;
   }
   if (d.status && d.status !== f.api_status) {
     if (/delay|cancel|divert/i.test(d.status)) delayChanges.push("Status: " + d.status);
-    f.api_status = d.status; dirty = true;
+    nu.api_status = d.status;
   }
-  if (d.aircraft && !f.aircraft) { f.aircraft = d.aircraft; dirty = true; }
-  if (d.aircraftReg && !f.aircraft_reg) { f.aircraft_reg = d.aircraftReg; dirty = true; }
 
-  if (dirty) upsertFlight_(f); // persist regardless of notification/dedupe outcome
-
-  // build the batched change message filtered by this flight's prefs
+  // 2) NOTIFY (per prefs), then decide what may be committed
   var msgParts = [];
   if (prefOn_(f, "delay")) msgParts = msgParts.concat(delayChanges);
   if (prefOn_(f, "gate")) msgParts = msgParts.concat(gateChanges);
+  var notifiedOk = true; // true when the change alert was delivered, already sent, or not needed
   if (msgParts.length) {
     var key = f.id + ":change:" + shortHash_(msgParts.join("|"));
     if (!notifSent_(key)) {
       var msg = "⚠️ <b>Flight update</b> — " + title + "\n" + escHtml_(msgParts.join("\n"));
-      if (sendTelegram_(msg, target)) markNotif_(key, msg);
+      notifiedOk = sendTelegram_(msg, target);
+      if (notifiedOk) markNotif_(key, msg);
     }
   }
+
+  // 3) PERSIST: display-only fields always; notified fields only if delivered
+  //    (if the alert failed, leave those stale so the next poll re-detects and retries)
+  var dirty = false;
+  if (d.aircraft && !f.aircraft) { f.aircraft = d.aircraft; dirty = true; }
+  if (d.aircraftReg && !f.aircraft_reg) { f.aircraft_reg = d.aircraftReg; dirty = true; }
+  if (notifiedOk) {
+    Object.keys(nu).forEach(function (k) { f[k] = nu[k]; dirty = true; });
+  }
+  if (dirty) upsertFlight_(f);
 
   // baggage belt: notify once per belt value (no stored column needed)
   if (prefOn_(f, "baggage") && d.arr && d.arr.baggageBelt) {
