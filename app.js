@@ -36,7 +36,8 @@
   }
 
   function durText(min) {
-    if (!min && min !== 0) return "";
+    min = Number(min);
+    if (isNaN(min) || min < 0) return "";
     return Math.floor(min / 60) + "h " + (min % 60 < 10 ? "0" : "") + (min % 60) + "m";
   }
 
@@ -176,13 +177,15 @@
     var upcoming = [], past = [];
     flights.forEach(function (f) {
       var arr = arrUtc(f);
-      if (arr && arr.getTime() < now) past.push(f); else upcoming.push(f);
+      // no computable arrival (unknown airport/tz) → group by status instead
+      var isPast = arr ? arr.getTime() < now : f.status === "flown";
+      if (isPast) past.push(f); else upcoming.push(f);
     });
     past.reverse(); // most recent first
 
     expandedId = null;
     for (var i = 0; i < upcoming.length; i++) {
-      if (upcoming[i].status !== "cancelled") { expandedId = upcoming[i].id; break; }
+      if (upcoming[i].status !== "cancelled" && stageTimes(upcoming[i])) { expandedId = upcoming[i].id; break; }
     }
 
     var html = "";
@@ -239,7 +242,7 @@
       flight_no: "", airline_iata: "", airline_name: "", dep_iata: "", arr_iata: "",
       dep_time_local: "", arr_time_local: "", status: "planned", passenger: "Brian Li",
     } : API.allRaw().find(function (x) { return x.id === id; });
-    if (!f) { location.hash = "#/trips"; return; }
+    if (!f || f.status === "deleted") { location.hash = "#/trips"; return; }
 
     var depDate = (f.dep_time_local || "").slice(0, 10);
     var depTime = (f.dep_time_local || "").slice(11, 16);
@@ -328,8 +331,9 @@
         dep_iata: depIata, arr_iata: arrIata,
         dep_time_local: depDate + "T" + depTime,
         arr_time_local: arrDate + "T" + arrTime,
-        dep_tz: (window.AIRPORTS[depIata] || [])[5] || f.dep_tz,
-        arr_tz: (window.AIRPORTS[arrIata] || [])[5] || f.arr_tz,
+        // no fallback to the previous airport's tz — unknown IATA means unknown tz
+        dep_tz: (window.AIRPORTS[depIata] || [])[5] || "",
+        arr_tz: (window.AIRPORTS[arrIata] || [])[5] || "",
         status: $("#f-status").value,
         pnr: $("#f-pnr").value.trim(), seat: $("#f-seat").value.trim(),
         cabin: $("#f-cabin").value,
@@ -350,6 +354,9 @@
     $("#btn-save").addEventListener("click", function () {
       var out = collect();
       if (!out) { msg(L.detail.invalid, "err"); return; }
+      var d1 = window.ICS.zonedToUtc(out.dep_time_local, out.dep_tz);
+      var d2 = window.ICS.zonedToUtc(out.arr_time_local, out.arr_tz);
+      if (d1 && d2 && d2 <= d1) { msg(L.detail.invalidTimes, "err"); return; }
       API.upsert(out).then(function () { location.hash = "#/trips"; })
         .catch(function (e) { msg(String(e.message || e), "err"); });
     });
@@ -380,7 +387,8 @@
         msg(L.detail.fetching);
         var flightNo = $("#f-no").value.trim().toUpperCase();
         var date = $("#f-depdate").value;
-        API.flightinfo(flightNo, date).then(function (res) {
+        var depIata = $("#f-dep").value.trim().toUpperCase();
+        API.flightinfo(flightNo, date, depIata).then(function (res) {
           if (!res.ok) {
             if (res.error === "not_found") msg(L.detail.fetchNotFound, "dim");
             else if (res.error === "monthly_quota" || res.error === "daily_cap") msg(L.detail.fetchQuota, "dim");
@@ -467,7 +475,7 @@
       rankSection(L.stats.topAirports, airports) +
       rankSection(L.stats.topRoutes, routes);
 
-    $("#stats-body").innerHTML = flights.length || includeUpcoming !== null ? html
+    $("#stats-body").innerHTML = API.flights().length ? html
       : '<div class="empty-state">' + esc(L.stats.empty) + "</div>";
 
     var cb = $("#stats-upcoming");
@@ -562,7 +570,8 @@
       '<div class="settings-card"><div class="section-label" style="margin-top:0">' + esc(L.settings.aboutSection) + "</div>" +
       '<p class="help">' + esc(L.settings.version) + " " + APP_VERSION +
       (API.syncedAt() ? " · synced " + new Date(API.syncedAt()).toLocaleString() : "") + "</p>" +
-      '<button class="btn small" id="btn-update">' + esc(L.settings.checkUpdate) + "</button></div>";
+      '<button class="btn small" id="btn-update">' + esc(L.settings.checkUpdate) + "</button>" +
+      '<div class="msg" id="about-msg"></div></div>';
 
     $("#settings-body").innerHTML = html;
 
@@ -585,7 +594,8 @@
       API.saveSettings({ backendUrl: $("#set-url").value.trim(), token: $("#set-token").value.trim() });
       m("#be-msg", L.common.loading);
       API.flushPending().then(function () { return API.refresh(); }).then(function () {
-        m("#be-msg", L.common.ok, "ok"); renderSettings();
+        renderSettings(); // rebuilds the DOM — write the outcome message afterwards
+        m("#be-msg", L.common.ok, "ok");
       }).catch(function (e) { m("#be-msg", L.settings.testFail + ": " + e.message, "err"); });
     });
 
@@ -641,7 +651,7 @@
       if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
         navigator.serviceWorker.getRegistration().then(function (reg) {
           if (reg) reg.update();
-          m("#tg-msg", L.common.ok, "ok");
+          m("#about-msg", L.common.ok, "ok");
         });
       }
     });

@@ -6,7 +6,9 @@ var AERO_HOST = "aerodatabox.p.rapidapi.com";
 var MONTHLY_UNIT_CAP = 500;
 var DAILY_CALL_CAP = 20;
 
-function cacheKey_(flightNo, dateStr) { return String(flightNo).toUpperCase() + "-" + dateStr; }
+function cacheKey_(flightNo, dateStr, depIata) {
+  return String(flightNo).toUpperCase() + "-" + dateStr + (depIata ? "-" + String(depIata).toUpperCase() : "");
+}
 
 function monthKey_() { return "UNITS_" + Utilities.formatDate(new Date(), "UTC", "yyyy-MM"); }
 function dayKey_() { return "LIVE_CALLS_" + Utilities.formatDate(new Date(), "UTC", "yyyyMMdd"); }
@@ -31,9 +33,9 @@ function cacheTtlMs_(depMs) {
   return 30 * 60e3;
 }
 
-function flightInfo_(flightNo, dateStr, force) {
+function flightInfo_(flightNo, dateStr, force, depIata) {
   if (!flightNo || !dateStr) return { ok: false, error: "missing_params" };
-  var key = cacheKey_(flightNo, dateStr);
+  var key = cacheKey_(flightNo, dateStr, depIata);
   var cached = readCache_(key);
   var payload = cached && cached.payload_json ? JSON.parse(cached.payload_json) : null;
 
@@ -83,7 +85,7 @@ function flightInfo_(flightNo, dateStr, force) {
     return { ok: false, error: "http_" + code };
   }
 
-  var data = normalizeAero_(JSON.parse(resp.getContentText()), dateStr);
+  var data = normalizeAero_(JSON.parse(resp.getContentText()), dateStr, depIata);
   if (!data) {
     writeCache_(key, JSON.stringify({ __negative: true }), 2);
     return { ok: false, error: "not_found" };
@@ -92,13 +94,21 @@ function flightInfo_(flightNo, dateStr, force) {
   return { ok: true, cached: false, fetched_at: nowIso_(), data: data };
 }
 
-// pick the leg departing on dateStr; normalize to the shape the front end expects
-function normalizeAero_(arr, dateStr) {
+// pick the right leg: same flight number can have multiple legs (A→B→C) on one date,
+// so match departure airport first, then date, then fall back to the first entry
+function normalizeAero_(arr, dateStr, depIata) {
   if (!arr || !arr.length) return null;
   var item = null;
-  for (var i = 0; i < arr.length; i++) {
-    var sched = arr[i].departure && arr[i].departure.scheduledTime && arr[i].departure.scheduledTime.local;
-    if (sched && String(sched).slice(0, 10) === dateStr) { item = arr[i]; break; }
+  var want = depIata ? String(depIata).toUpperCase() : null;
+  for (var i = 0; i < arr.length && want; i++) {
+    var ap = arr[i].departure && arr[i].departure.airport && arr[i].departure.airport.iata;
+    var sched0 = arr[i].departure && arr[i].departure.scheduledTime && arr[i].departure.scheduledTime.local;
+    if (ap && String(ap).toUpperCase() === want &&
+        (!sched0 || String(sched0).slice(0, 10) === dateStr)) { item = arr[i]; break; }
+  }
+  for (var j = 0; j < arr.length && !item; j++) {
+    var sched = arr[j].departure && arr[j].departure.scheduledTime && arr[j].departure.scheduledTime.local;
+    if (sched && String(sched).slice(0, 10) === dateStr) { item = arr[j]; }
   }
   if (!item) item = arr[0];
 

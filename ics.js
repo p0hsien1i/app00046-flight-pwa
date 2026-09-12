@@ -15,17 +15,21 @@
     return Date.UTC(+p.year, +p.month - 1, +p.day, hh, +p.minute);
   }
 
-  // localIso "YYYY-MM-DDTHH:mm", tz "Asia/Taipei" -> Date (UTC instant)
+  // localIso "YYYY-MM-DDTHH:mm", tz "Asia/Taipei" -> Date (UTC instant).
+  // Returns null on missing/invalid tz — callers must treat null as "no absolute time",
+  // never silently fall back to the device timezone.
   function zonedToUtc(localIso, tz) {
-    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(localIso);
-    if (!m) return null;
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(localIso || "");
+    if (!m || !tz) return null;
     var want = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
     var utc = want;
-    for (var i = 0; i < 3; i++) {
-      var shown = wallTimeInZone(utc, tz);
-      if (shown === want) break;
-      utc += want - shown;
-    }
+    try {
+      for (var i = 0; i < 3; i++) {
+        var shown = wallTimeInZone(utc, tz);
+        if (shown === want) break;
+        utc += want - shown;
+      }
+    } catch (e) { return null; } // unknown IANA name
     return new Date(utc);
   }
 
@@ -46,13 +50,13 @@
   function foldLine(line) {
     var bytes = enc.encode(line);
     if (bytes.length <= 75) return line;
-    var out = [], cur = "", curLen = 0, limit = 75;
-    for (var i = 0; i < line.length; i++) {
-      var ch = line[i];
+    var out = [], cur = "", curLen = 0;
+    // for...of iterates code points, so surrogate pairs (emoji) are never split mid-character
+    for (var ch of line) {
       var chLen = enc.encode(ch).length;
-      if (curLen + chLen > limit) {
+      if (curLen + chLen > 75) {
         out.push(cur);
-        cur = " " + ch; curLen = 1 + chLen; limit = 75;
+        cur = " " + ch; curLen = 1 + chLen;
       } else {
         cur += ch; curLen += chLen;
       }
@@ -99,7 +103,7 @@
       "SUMMARY:" + escText(summary),
       "LOCATION:" + escText(location),
       "DESCRIPTION:" + escText(descLines.join("\n")),
-      "SEQUENCE:" + (f.seq || 0),
+      "SEQUENCE:" + (Number(f.seq) || 0),
     ];
     if (f.status === "cancelled") lines.push("STATUS:CANCELLED");
     lines.push(

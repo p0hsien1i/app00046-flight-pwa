@@ -66,6 +66,7 @@ window.LABELS = {
     fetchApplied: "Flight data applied — review and save.",
     unknownAirport: "Unknown IATA code",
     invalid: "Please fill flight number, airports, date and times.",
+    invalidTimes: "Arrival must be after departure — check the arrival date (+1 day for overnight flights).",
     distance: "Distance",
     duration: "Duration",
     synced: "Synced to Google Calendar.",

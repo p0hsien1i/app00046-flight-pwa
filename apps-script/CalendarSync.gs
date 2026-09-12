@@ -7,7 +7,8 @@ function flightsCal_() {
     var cal = CalendarApp.getCalendarById(id);
     if (cal) return cal;
   }
-  var created = CalendarApp.createCalendar("Flights", { color: CalendarApp.Color.PALE_BLUE });
+  // note: CalendarApp.Color has no PALE_BLUE (that's EventColor) — use a hex value
+  var created = CalendarApp.createCalendar("Flights", { color: "#a4bdfc" });
   setSetting_("CAL_ID", created.getId());
   log_("INFO", "calendar", "created Flights calendar " + created.getId());
   return created;

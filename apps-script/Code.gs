@@ -31,7 +31,7 @@ function doGet(e) {
       return ContentService.createTextOutput(buildIcs_(listFlights_(false)))
         .setMimeType(ContentService.MimeType.ICAL);
     if (action === "flightinfo")
-      return json_(flightInfo_(p.flightNo, p.date, p.force === "1"));
+      return json_(flightInfo_(p.flightNo, p.date, p.force === "1", p.dep));
     return json_({ ok: false, error: "unknown_action" });
   } catch (err) {
     log_("ERROR", "doGet", String(err && err.stack || err));
@@ -65,8 +65,8 @@ function doPost(e) {
       return json_(out);
     }
     if (action === "testTelegram") {
-      sendTelegram_("✈️ app00046 test message — backend is alive (" + new Date().toISOString() + ")");
-      return json_({ ok: true });
+      var sent = sendTelegram_("✈️ app00046 test message — backend is alive (" + new Date().toISOString() + ")");
+      return json_(sent ? { ok: true } : { ok: false, error: "telegram_send_failed_see_log" });
     }
     return json_({ ok: false, error: "unknown_action" });
   } catch (err) {
@@ -99,8 +99,12 @@ function setup() {
   };
   Object.keys(specs).forEach(function (name) {
     var sh = ss.getSheetByName(name) || ss.insertSheet(name);
-    sh.getRange("A:AZ").setNumberFormat("@"); // keep ISO strings as strings
-    sh.getRange(1, 1, 1, specs[name].length).setValues([specs[name]]).setFontWeight("bold");
+    var n = specs[name].length;
+    // new sheets default to 26 columns — grow the grid before touching column >Z
+    if (sh.getMaxColumns() < n) sh.insertColumnsAfter(sh.getMaxColumns(), n - sh.getMaxColumns());
+    // plain-text format everywhere so ISO time strings are never coerced into Date cells
+    sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).setNumberFormat("@");
+    sh.getRange(1, 1, 1, n).setValues([specs[name]]).setFontWeight("bold");
     sh.setFrozenRows(1);
   });
   var sheet1 = ss.getSheetByName("Sheet1") || ss.getSheetByName("工作表1");

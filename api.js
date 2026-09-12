@@ -40,14 +40,24 @@
     var dep = window.AIRPORTS[f.dep_iata], arr = window.AIRPORTS[f.arr_iata];
     if (dep) { f.dep_airport = dep[0]; f.dep_tz = f.dep_tz || dep[5]; }
     if (arr) { f.arr_airport = arr[0]; f.arr_tz = f.arr_tz || arr[5]; }
+    // recompute both or clear both — never leave a previous route's numbers behind
     if (dep && arr) f.distance_km = haversineKm(dep[3], dep[4], arr[3], arr[4]);
-    if (f.dep_time_local && f.arr_time_local && f.dep_tz && f.arr_tz) {
-      var d1 = window.ICS.zonedToUtc(f.dep_time_local, f.dep_tz);
-      var d2 = window.ICS.zonedToUtc(f.arr_time_local, f.arr_tz);
-      if (d1 && d2) f.duration_min = Math.round((d2 - d1) / 60000);
-    }
+    else f.distance_km = "";
+    var d1 = window.ICS.zonedToUtc(f.dep_time_local, f.dep_tz);
+    var d2 = window.ICS.zonedToUtc(f.arr_time_local, f.arr_tz);
+    f.duration_min = (d1 && d2) ? Math.round((d2 - d1) / 60000) : "";
     if (f.airline_iata && !f.airline_name && window.AIRLINES[f.airline_iata])
       f.airline_name = window.AIRLINES[f.airline_iata];
+    return f;
+  }
+
+  // backend (Sheets) returns every cell as a string — coerce numeric fields back
+  function coerceTypes(f) {
+    ["distance_km", "duration_min", "seq"].forEach(function (k) {
+      if (f[k] === "" || f[k] == null) return;
+      var n = Number(f[k]);
+      f[k] = isNaN(n) ? "" : n;
+    });
     return f;
   }
 
@@ -101,7 +111,7 @@
     var i = flights.findIndex(function (x) { return x.id === f.id; });
     var now = new Date().toISOString();
     if (i >= 0) {
-      f.seq = (flights[i].seq || 0) + 1;
+      f.seq = (Number(flights[i].seq) || 0) + 1;
       f.created_at = flights[i].created_at || now;
       f.updated_at = now;
       flights[i] = f;
@@ -111,6 +121,14 @@
     }
     localWrite(flights);
     return f;
+  }
+
+  // replace the mirror copy verbatim (backend echo) — no seq bump, no timestamp touch
+  function localReplace(f) {
+    var flights = localAll();
+    var i = flights.findIndex(function (x) { return x.id === f.id; });
+    if (i >= 0) flights[i] = f; else flights.push(f);
+    localWrite(flights);
   }
 
   function localDelete(id) {
@@ -147,20 +165,26 @@
   function pendingOps() { return readJson(K.pending, []); }
   function pushPending(op) { var q = pendingOps(); q.push(op); writeJson(K.pending, q); }
 
-  var flushing = false;
+  var flushPromise = null;
   function flushPending() {
-    if (flushing || !hasBackend()) return Promise.resolve();
+    if (flushPromise) return flushPromise;
+    if (!hasBackend()) return Promise.resolve();
     var q = pendingOps();
     if (!q.length) return Promise.resolve();
-    flushing = true;
     var chain = Promise.resolve();
     q.forEach(function (op) {
-      chain = chain.then(function () { return gpost(op.action, op.payload); });
+      chain = chain.then(function () { return gpost(op.action, op.payload); })
+        .then(function (res) {
+          // a logical failure ({ok:false}) must NOT clear the queue — that would
+          // silently drop offline edits (unauthorized, quota, version skew, …)
+          if (!res || !res.ok) throw new Error((res && res.error) || "backend_error");
+        });
     });
-    return chain.then(function () {
+    flushPromise = chain.then(function () {
       writeJson(K.pending, []);
     }).catch(function () { /* keep queue, retry later */ })
-      .then(function () { flushing = false; notify(); });
+      .then(function () { flushPromise = null; notify(); });
+    return flushPromise;
   }
 
   window.addEventListener("online", function () { flushPending().then(refresh); });
@@ -180,7 +204,7 @@
     if (!hasBackend()) return Promise.resolve(visible(localAll()));
     return gget("list").then(function (res) {
       if (!res.ok) throw new Error(res.error || "list failed");
-      writeJson(K.flights, res.flights);
+      writeJson(K.flights, res.flights.map(coerceTypes));
       localStorage.setItem(K.syncedAt, new Date().toISOString());
       notify();
       return res.flights;
@@ -210,7 +234,7 @@
       if (!hasBackend()) { notify(); return Promise.resolve(saved); }
       return gpost("upsert", { flight: saved }).then(function (res) {
         if (!res.ok) throw new Error(res.error || "upsert failed");
-        localUpsert(res.flight); notify();
+        localReplace(coerceTypes(res.flight)); notify();
         return res.flight;
       }).catch(function (e) {
         if (e instanceof TypeError) { pushPending({ action: "upsert", payload: { flight: saved } }); notify(); return saved; }
@@ -231,7 +255,10 @@
     },
 
     bulkUpsert: function (flights) {
-      var prepared = flights.map(function (f) { enrich(f); if (!f.id) f.id = mkId(f); return f; });
+      var prepared;
+      try {
+        prepared = flights.map(function (f) { enrich(f); if (!f.id) f.id = mkId(f); return f; });
+      } catch (e) { return Promise.reject(e); } // surface bad input to the caller's .catch
       if (!hasBackend()) {
         var created = 0, updated = 0;
         var existing = localAll();
@@ -253,9 +280,10 @@
       return gget("ping");
     },
 
-    flightinfo: function (flightNo, date, force) {
+    flightinfo: function (flightNo, date, depIata, force) {
       if (!hasBackend()) return Promise.resolve({ ok: false, error: "no_backend" });
       var p = { flightNo: flightNo, date: date };
+      if (depIata) p.dep = depIata; // disambiguates multi-leg flight numbers
       if (force) p.force = "1";
       return gget("flightinfo", p);
     },

@@ -50,17 +50,47 @@ function upsertFlight_(f) {
   return merged;
 }
 
+// history backfill can be hundreds of rows — one sheet read up front, appends batched
+// (per-flight readRows_ would blow the 6-minute execution limit)
 function bulkUpsert_(flights) {
+  var rows = readRows_("flights");
+  var byId = {};
+  rows.forEach(function (r) { if (r.id) byId[r.id] = r; });
+  var now = nowIso_();
   var created = 0, updated = 0, errors = [];
+  var appends = [];
+
   flights.forEach(function (f) {
     try {
-      var existed = !!findRow_(f.id);
-      upsertFlight_(f);
-      if (existed) updated++; else created++;
+      if (!f || !f.id) throw new Error("flight.id required");
+      var existing = byId[f.id];
+      var merged = {};
+      FLIGHT_COLS.forEach(function (c) {
+        merged[c] = f[c] != null ? f[c] : (existing ? existing[c] : "");
+      });
+      if (existing) {
+        merged.seq = Number(existing.seq || 0) + 1;
+        merged.created_at = existing.created_at || now;
+        if (!f.gcal_event_id) merged.gcal_event_id = existing.gcal_event_id || "";
+        merged.updated_at = now;
+        writeRow_("flights", FLIGHT_COLS, merged, existing.__row);
+        updated++;
+      } else {
+        merged.seq = 0; merged.created_at = now; merged.updated_at = now;
+        appends.push(FLIGHT_COLS.map(function (c) { return merged[c] == null ? "" : merged[c]; }));
+        byId[f.id] = merged; // duplicates inside one batch update instead of double-append
+        created++;
+      }
     } catch (e) {
       errors.push({ id: f && f.id, error: String(e) });
     }
   });
+
+  if (appends.length) {
+    assertHeader_("flights", FLIGHT_COLS);
+    var sh = sheet_("flights");
+    sh.getRange(sh.getLastRow() + 1, 1, appends.length, FLIGHT_COLS.length).setValues(appends);
+  }
   return { created: created, updated: updated, errors: errors };
 }
 

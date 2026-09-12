@@ -43,8 +43,18 @@ self.addEventListener("fetch", function (e) {
   var url = new URL(e.request.url);
   // same-origin GET → cache-first (app shell); anything else (Apps Script etc.) → network only
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
+  if (e.request.mode === "navigate") {
+    // any navigation (with/without trailing slash, any query) falls back to the cached shell
+    e.respondWith(
+      caches.match(e.request, { ignoreSearch: true }).then(function (hit) {
+        if (hit) return hit;
+        return caches.match("index.html").then(function (idx) { return idx || fetch(e.request); });
+      })
+    );
+    return;
+  }
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: url.pathname.endsWith("/") }).then(function (hit) {
+    caches.match(e.request).then(function (hit) {
       return hit || fetch(e.request);
     })
   );

@@ -12,8 +12,8 @@ function icsEsc_(s) {
 function foldIcsLine_(line) {
   if (Utilities.newBlob(line).getBytes().length <= 75) return line;
   var out = [], cur = "", curLen = 0;
-  for (var i = 0; i < line.length; i++) {
-    var ch = line.charAt(i);
+  // for...of iterates code points — never split a surrogate pair (emoji) across the fold
+  for (var ch of line) {
     var chLen = Utilities.newBlob(ch).getBytes().length;
     if (curLen + chLen > 75) { out.push(cur); cur = " " + ch; curLen = 1 + chLen; }
     else { cur += ch; curLen += chLen; }
