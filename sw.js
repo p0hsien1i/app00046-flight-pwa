@@ -1,5 +1,5 @@
 // sw.js — app-shell precache. Bump CACHE_NAME on every release (only reliable update signal on Pages).
-var CACHE_NAME = "app00046-v1";
+var CACHE_NAME = "app00046-v2";
 
 var SHELL = [
   "./",

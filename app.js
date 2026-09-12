@@ -591,12 +591,22 @@
     });
 
     $("#btn-savebe").addEventListener("click", function () {
+      // capture local flights BEFORE refresh overwrites the mirror, so a first
+      // connection to an empty backend migrates them up instead of wiping them
+      var localFlights = API.flights();
       API.saveSettings({ backendUrl: $("#set-url").value.trim(), token: $("#set-token").value.trim() });
       m("#be-msg", L.common.loading);
-      API.flushPending().then(function () { return API.refresh(); }).then(function () {
-        renderSettings(); // rebuilds the DOM — write the outcome message afterwards
-        m("#be-msg", L.common.ok, "ok");
-      }).catch(function (e) { m("#be-msg", L.settings.testFail + ": " + e.message, "err"); });
+      API.flushPending()
+        .then(function () { return API.refresh(); })
+        .then(function (backendFlights) {
+          if ((!backendFlights || !backendFlights.length) && localFlights.length)
+            return API.bulkUpsert(localFlights).then(function () { return API.refresh(); });
+        })
+        .then(function () {
+          renderSettings(); // rebuilds the DOM — write the outcome message afterwards
+          m("#be-msg", L.common.ok, "ok");
+        })
+        .catch(function (e) { m("#be-msg", L.settings.testFail + ": " + e.message, "err"); });
     });
 
     $("#btn-syncall").addEventListener("click", function () {
