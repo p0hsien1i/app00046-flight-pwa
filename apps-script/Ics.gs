@@ -36,7 +36,7 @@ function buildIcs_(flights) {
     var dep = parseLocal_(f.dep_time_local, f.dep_tz);
     var arr = parseLocal_(f.arr_time_local, f.arr_tz);
     if (!dep || !arr) return;
-    var summary = f.flight_no + " · " + f.dep_iata + " → " + f.arr_iata;
+    var summary = flightTitle_(f); // "[passenger] FLIGHTNO DEP-ARR"
     lines.push(
       "BEGIN:VEVENT",
       "UID:" + f.id + "@app00046",

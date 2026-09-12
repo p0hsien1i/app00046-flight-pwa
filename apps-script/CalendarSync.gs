@@ -14,7 +14,7 @@ function flightsCal_() {
   return created;
 }
 
-function eventTitle_(f) { return f.flight_no + " · " + f.dep_iata + " → " + f.arr_iata; }
+function eventTitle_(f) { return flightTitle_(f); } // "[passenger] FLIGHTNO DEP-ARR"
 
 function eventDesc_(f) {
   var lines = [];

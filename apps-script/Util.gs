@@ -71,6 +71,12 @@ function icsUtc_(d) { return Utilities.formatDate(d, "UTC", "yyyyMMdd'T'HHmmss'Z
 
 function nowIso_() { return new Date().toISOString(); }
 
+// shared flight title: "[passenger] FLIGHTNO DEP-ARR" (passenger prefix omitted if blank)
+function flightTitle_(f) {
+  var route = f.flight_no + " " + f.dep_iata + "-" + f.arr_iata;
+  return f.passenger ? "[" + f.passenger + "] " + route : route;
+}
+
 // settings sheet as kv store
 function getSetting_(key) {
   var rows = readRows_("settings");

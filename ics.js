@@ -76,7 +76,8 @@
     var arr = zonedToUtc(f.arr_time_local, f.arr_tz);
     if (!dep || !arr) return null;
 
-    var summary = f.flight_no + " · " + f.dep_iata + " → " + f.arr_iata;
+    // "[passenger] FLIGHTNO DEP-ARR" — mirrors the backend flightTitle_
+    var summary = (f.passenger ? "[" + f.passenger + "] " : "") + f.flight_no + " " + f.dep_iata + "-" + f.arr_iata;
     var locParts = [f.dep_iata];
     if (f.dep_terminal) locParts.push("T" + String(f.dep_terminal).replace(/^T/i, ""));
     var location = locParts.join(" ") + " — " + airportLabel(f.dep_iata);

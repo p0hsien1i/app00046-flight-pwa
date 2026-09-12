@@ -77,7 +77,7 @@ function cronHourly() {
         var arr = parseLocal_(f.arr_time_local, f.arr_tz);
         var arrMs = arr ? arr.getTime() : depMs + 3 * 3600e3;
         var isOther = (f.traveler_role || "self") === "other";
-        var title = escHtml_(f.flight_no + " " + f.dep_iata + "→" + f.arr_iata);
+        var title = escHtml_(flightTitle_(f)); // "[passenger] FLIGHTNO DEP-ARR"
 
         // check-in + day-of are only meaningful for flights I'm on (you don't check in for others)
         if (!isOther) {
