@@ -91,6 +91,7 @@
 
   function cardHtml(f, expanded) {
     var cancelled = f.status === "cancelled";
+    var isOther = f.traveler_role === "other";
     var overnight = f.arr_time_local && f.dep_time_local &&
       f.arr_time_local.slice(0, 10) !== f.dep_time_local.slice(0, 10);
     var chips = [];
@@ -100,10 +101,17 @@
     if (f.pnr) chips.push("PNR <b>" + esc(f.pnr) + "</b>");
     if (f.aircraft) chips.push(esc(f.aircraft));
 
+    // "someone else" flights show a WATCHING badge (+ who) and, when known, a live-status pill
+    var topRight = '<span class="pill ' + esc(f.status) + '">' + esc(L.status[f.status] || f.status) + "</span>";
+    if (isOther) {
+      var who = f.passenger ? " · " + esc(f.passenger) : "";
+      var live = f.api_status ? '<span class="pill live">' + esc(f.api_status) + "</span> " : "";
+      topRight = live + '<span class="pill watching">' + esc(L.trips.watchingBadge) + who + "</span>";
+    }
+
     return '<div class="card' + (cancelled ? " cancelled-card" : "") + '" data-id="' + esc(f.id) + '">' +
       '<div class="card-top"><span>' + esc(f.airline_name || f.airline_iata || "") +
-      " · " + esc(f.flight_no) + '</span><span class="pill ' + esc(f.status) + '">' +
-      esc(L.status[f.status] || f.status) + "</span></div>" +
+      " · " + esc(f.flight_no) + '</span><span class="pill-group">' + topRight + "</span></div>" +
       '<div class="card-body">' +
       '<div class="endpoint dep"><div class="iata">' + esc(f.dep_iata) + '</div>' +
       '<div class="time">' + esc(fmtTime(f.dep_time_local)) + '</div>' +
@@ -240,14 +248,17 @@
     var isNew = !id;
     var f = isNew ? {
       flight_no: "", airline_iata: "", airline_name: "", dep_iata: "", arr_iata: "",
-      dep_time_local: "", arr_time_local: "", status: "planned", passenger: "Brian Li",
+      dep_time_local: "", arr_time_local: "", status: "planned",
+      traveler_role: "self", passenger: "Brian Li",
     } : API.allRaw().find(function (x) { return x.id === id; });
     if (!f || f.status === "deleted") { location.hash = "#/trips"; return; }
+    if (!f.traveler_role) f.traveler_role = "self";
 
     var depDate = (f.dep_time_local || "").slice(0, 10);
     var depTime = (f.dep_time_local || "").slice(11, 16);
     var arrDate = (f.arr_time_local || "").slice(0, 10);
     var arrTime = (f.arr_time_local || "").slice(11, 16);
+    var isOther0 = f.traveler_role === "other";
 
     var statusOpts = ["planned", "ticketed", "checked-in", "flown", "cancelled"].map(function (s) {
       return '<option value="' + s + '"' + (f.status === s ? " selected" : "") + ">" + esc(L.status[s]) + "</option>";
@@ -260,12 +271,31 @@
     var html =
       '<div class="page-title"><a class="back-link" href="#/trips">‹ ' + esc(L.tabs.trips) + "</a><span>" +
       esc(isNew ? L.detail.newTitle : f.flight_no) + '</span><span style="width:48px"></span></div>' +
+
+      // ---- lazy lookup: flight number + date -> auto-fill everything ----
+      '<div class="lookup-card">' +
       '<div class="form-grid">' +
       field("f-no", L.detail.flightNo, inp("f-no", f.flight_no, L.detail.flightNoPh)) +
+      field("f-depdate", L.detail.date, inp("f-depdate", depDate, "", "date")) +
+      "</div>" +
+      '<button class="btn small primary" id="btn-lookup">' + esc(L.detail.lookup) + "</button>" +
+      '<div class="hint" id="lookup-hint">' + esc(L.detail.lookupHint) + "</div>" +
+      "</div>" +
+
+      // ---- who is flying ----
+      '<div class="field full"><label>' + esc(L.detail.travelerRole) + "</label>" +
+      '<div class="role-row">' +
+      '<label class="role-opt' + (isOther0 ? "" : " active") + '" data-role="self"><input type="radio" name="role" value="self"' + (isOther0 ? "" : " checked") + ">" + esc(L.detail.travelerRoles.self) + "</label>" +
+      '<label class="role-opt' + (isOther0 ? " active" : "") + '" data-role="other"><input type="radio" name="role" value="other"' + (isOther0 ? " checked" : "") + ">" + esc(L.detail.travelerRoles.other) + "</label>" +
+      "</div></div>" +
+      '<div class="field full' + (isOther0 ? "" : " hidden") + '" id="who-field"><label for="f-who">' + esc(L.detail.whoFlying) + "</label>" +
+      inp("f-who", isOther0 ? f.passenger : "", L.detail.whoFlyingPh) + "</div>" +
+
+      // ---- the rest (editable fallback / details) ----
+      '<div class="form-grid">' +
       field("f-airline", L.detail.airline, inp("f-airline", f.airline_name)) +
       field("f-dep", L.detail.from, inp("f-dep", f.dep_iata, "TPE")) +
       field("f-arr", L.detail.to, inp("f-arr", f.arr_iata, "LAX")) +
-      field("f-depdate", L.detail.date, inp("f-depdate", depDate, "", "date")) +
       field("f-deptime", L.detail.depTime, inp("f-deptime", depTime, "", "time")) +
       field("f-arrdate", L.detail.arrDate, inp("f-arrdate", arrDate, "", "date")) +
       field("f-arrtime", L.detail.arrTime, inp("f-arrtime", arrTime, "", "time")) +
@@ -278,18 +308,30 @@
       field("f-arrterm", L.detail.arrTerminal, inp("f-arrterm", f.arr_terminal)) +
       field("f-arrgate", L.detail.arrGate, inp("f-arrgate", f.arr_gate)) +
       field("f-aircraft", L.detail.aircraft, inp("f-aircraft", f.aircraft)) +
-      field("f-passenger", L.detail.passenger, inp("f-passenger", f.passenger)) +
       field("f-notes", L.detail.notes, '<textarea id="f-notes" rows="2">' + esc(f.notes || "") + "</textarea>", true) +
       "</div>" +
       '<div class="msg" id="detail-msg"></div>' +
       '<button class="btn primary" id="btn-save">' + esc(L.detail.save) + "</button>" +
       (isNew ? "" :
-        '<button class="btn" id="btn-fetch">' + esc(L.detail.fetchInfo) + "</button>" +
         '<button class="btn" id="btn-ics">' + esc(L.detail.exportIcs) + "</button>" +
         '<button class="btn" id="btn-gcal">' + esc(L.detail.syncCalendar) + "</button>" +
         '<button class="btn danger" id="btn-del">' + esc(L.detail.delete) + "</button>");
 
     $("#page-detail").innerHTML = html;
+
+    // role radio → toggle "who's flying" field
+    document.querySelectorAll(".role-opt").forEach(function (opt) {
+      opt.addEventListener("click", function () {
+        document.querySelectorAll(".role-opt").forEach(function (o) { o.classList.remove("active"); });
+        opt.classList.add("active");
+        opt.querySelector("input").checked = true;
+        $("#who-field").classList.toggle("hidden", opt.dataset.role !== "other");
+      });
+    });
+    function currentRole() {
+      var el = document.querySelector('input[name="role"]:checked');
+      return el ? el.value : "self";
+    }
 
     // IATA hints + airline autofill
     function bindIata(inputId) {
@@ -316,6 +358,55 @@
       if (!$("#f-arrdate").value) $("#f-arrdate").value = this.value;
     });
 
+    function msg(text, cls) {
+      var el = $("#detail-msg");
+      el.textContent = text; el.className = "msg " + (cls || "dim");
+    }
+
+    // fill the whole form from a flightinfo payload; also stashes reg + live status on f
+    function applyFlightInfo(d) {
+      if (!d) return;
+      if (d.airlineName && !$("#f-airline").value) $("#f-airline").value = d.airlineName;
+      if (d.aircraft) $("#f-aircraft").value = d.aircraft;
+      if (d.aircraftReg) f.aircraft_reg = d.aircraftReg;
+      if (d.status) f.api_status = d.status;
+      if (d.dep) {
+        if (d.dep.iata) { $("#f-dep").value = d.dep.iata; }
+        if (d.dep.terminal) $("#f-depterm").value = d.dep.terminal;
+        if (d.dep.gate) $("#f-depgate").value = d.dep.gate;
+        var td = d.dep.revisedLocal || d.dep.schedLocal;
+        if (td) { $("#f-depdate").value = td.slice(0, 10); $("#f-deptime").value = td.slice(11, 16); }
+      }
+      if (d.arr) {
+        if (d.arr.iata) { $("#f-arr").value = d.arr.iata; }
+        if (d.arr.terminal) $("#f-arrterm").value = d.arr.terminal;
+        if (d.arr.gate) $("#f-arrgate").value = d.arr.gate;
+        var ta = d.arr.revisedLocal || d.arr.schedLocal;
+        if (ta) { $("#f-arrdate").value = ta.slice(0, 10); $("#f-arrtime").value = ta.slice(11, 16); }
+      }
+      bindIata("f-dep"); bindIata("f-arr"); // refresh airport-name hints (also re-derives tz on save)
+    }
+
+    function doLookup(onlyBlanks) {
+      if (API.mode() !== "backend") { msg(L.detail.fetchNoBackend, "err"); return; }
+      var flightNo = $("#f-no").value.trim().toUpperCase();
+      var date = $("#f-depdate").value;
+      if (!flightNo || !date) { msg(L.detail.invalid, "err"); return; }
+      msg(L.detail.lookingUp);
+      var depIata = $("#f-dep").value.trim().toUpperCase();
+      API.flightinfo(flightNo, date, depIata).then(function (res) {
+        if (!res.ok) {
+          if (res.error === "not_found") msg(L.detail.lookupManual, "dim");
+          else if (res.error === "monthly_quota" || res.error === "daily_cap") msg(L.detail.fetchQuota, "dim");
+          else msg(L.common.error + ": " + (res.error || ""), "err");
+          return;
+        }
+        applyFlightInfo(res.data || {});
+        msg(L.detail.lookupFilled, "ok");
+      }).catch(function (e) { msg(L.common.error + ": " + e.message, "err"); });
+    }
+    $("#btn-lookup").addEventListener("click", function () { doLookup(); });
+
     function collect() {
       var flightNo = $("#f-no").value.trim().toUpperCase();
       var depIata = $("#f-dep").value.trim().toUpperCase();
@@ -323,6 +414,8 @@
       var depDate = $("#f-depdate").value, depTime = $("#f-deptime").value;
       var arrDate = $("#f-arrdate").value || depDate, arrTime = $("#f-arrtime").value;
       if (!flightNo || !depIata || !arrIata || !depDate || !depTime || !arrTime) return null;
+      var role = currentRole();
+      var passenger = role === "other" ? $("#f-who").value.trim() : (f.passenger && f.traveler_role === "self" ? f.passenger : "Brian Li");
       var m = /^([A-Z0-9]{2})\d/.exec(flightNo);
       var out = Object.assign({}, f, {
         flight_no: flightNo,
@@ -340,15 +433,11 @@
         dep_terminal: $("#f-depterm").value.trim(), dep_gate: $("#f-depgate").value.trim(),
         arr_terminal: $("#f-arrterm").value.trim(), arr_gate: $("#f-arrgate").value.trim(),
         aircraft: $("#f-aircraft").value.trim(),
-        passenger: $("#f-passenger").value.trim(),
+        traveler_role: role,
+        passenger: passenger,
         notes: $("#f-notes").value.trim(),
       });
       return out;
-    }
-
-    function msg(text, cls) {
-      var el = $("#detail-msg");
-      el.textContent = text; el.className = "msg " + (cls || "dim");
     }
 
     $("#btn-save").addEventListener("click", function () {
@@ -381,41 +470,6 @@
           else msg(L.detail.syncFailed + ": " + (res.error || ""), "err");
         }).catch(function (e) { msg(L.detail.syncFailed + ": " + e.message, "err"); });
       });
-
-      $("#btn-fetch").addEventListener("click", function () {
-        if (API.mode() !== "backend") { msg(L.detail.fetchNoBackend, "err"); return; }
-        msg(L.detail.fetching);
-        var flightNo = $("#f-no").value.trim().toUpperCase();
-        var date = $("#f-depdate").value;
-        var depIata = $("#f-dep").value.trim().toUpperCase();
-        API.flightinfo(flightNo, date, depIata).then(function (res) {
-          if (!res.ok) {
-            if (res.error === "not_found") msg(L.detail.fetchNotFound, "dim");
-            else if (res.error === "monthly_quota" || res.error === "daily_cap") msg(L.detail.fetchQuota, "dim");
-            else msg(L.common.error + ": " + (res.error || ""), "err");
-            return;
-          }
-          var d = res.data || {};
-          if (d.aircraft) $("#f-aircraft").value = d.aircraft;
-          if (d.dep) {
-            if (d.dep.terminal) $("#f-depterm").value = d.dep.terminal;
-            if (d.dep.gate) $("#f-depgate").value = d.dep.gate;
-            if (d.dep.revisedLocal || d.dep.schedLocal) {
-              var t = (d.dep.revisedLocal || d.dep.schedLocal);
-              $("#f-depdate").value = t.slice(0, 10); $("#f-deptime").value = t.slice(11, 16);
-            }
-          }
-          if (d.arr) {
-            if (d.arr.terminal) $("#f-arrterm").value = d.arr.terminal;
-            if (d.arr.gate) $("#f-arrgate").value = d.arr.gate;
-            if (d.arr.revisedLocal || d.arr.schedLocal) {
-              var t2 = (d.arr.revisedLocal || d.arr.schedLocal);
-              $("#f-arrdate").value = t2.slice(0, 10); $("#f-arrtime").value = t2.slice(11, 16);
-            }
-          }
-          msg(L.detail.fetchApplied, "ok");
-        }).catch(function (e) { msg(L.common.error + ": " + e.message, "err"); });
-      });
     }
   }
 
@@ -424,7 +478,10 @@
   var includeUpcoming = null; // adaptive default, see renderStats
 
   function statFlights() {
-    var all = API.flights().filter(function (f) { return f.status !== "cancelled"; });
+    // stats only count flights I'm actually on (traveler_role=self); "someone else" flights excluded
+    var all = API.flights().filter(function (f) {
+      return f.status !== "cancelled" && (f.traveler_role || "self") === "self";
+    });
     var flown = all.filter(function (f) { return f.status === "flown"; });
     if (includeUpcoming === null) includeUpcoming = flown.length === 0;
     return includeUpcoming ? all : flown;

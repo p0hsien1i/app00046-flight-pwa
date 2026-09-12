@@ -12,6 +12,7 @@ var FLIGHT_COLS = [
   "distance_km", "duration_min", "seq", "gcal_event_id",
   "api_status", "dep_revised_local", "arr_revised_local",
   "created_at", "updated_at",
+  "traveler_role", "notify_prefs", "notify_chat_id", "aircraft_reg",
 ];
 
 function doGet(e) {

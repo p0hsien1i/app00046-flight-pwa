@@ -1,7 +1,7 @@
 // labels.js — every user-facing string lives here. Swap or edit this file to translate the app.
 // [provisional] wording — adjust freely; nothing else needs to change.
 window.LABELS = {
-  appName: "Flight in the Air",
+  appName: "Brian in the Air",
   tabs: { trips: "Trips", stats: "Stats", settings: "Settings" },
 
   trips: {
@@ -10,6 +10,7 @@ window.LABELS = {
     empty: "No flights yet.\nTap + to add your first flight.",
     addFlight: "Add flight",
     stages: ["CHECK-IN", "BOARDING", "TAKEOFF", "LANDING"],
+    watchingBadge: "WATCHING",
     countdown: {
       checkin: "CHECK-IN OPENS IN",
       boarding: "BOARDING IN",
@@ -33,6 +34,15 @@ window.LABELS = {
     editTitle: "Flight",
     flightNo: "Flight number",
     flightNoPh: "e.g. JX002",
+    lookup: "Look up flight",
+    lookingUp: "Looking up…",
+    lookupHint: "Enter flight number + date, then look it up — everything else fills in.",
+    lookupFilled: "Flight found — review and save.",
+    lookupManual: "Not found — fill the details in manually below.",
+    travelerRole: "Who's flying?",
+    travelerRoles: { self: "I'm flying", other: "Someone else" },
+    whoFlying: "Passenger name",
+    whoFlyingPh: "e.g. Mom",
     airline: "Airline",
     date: "Departure date",
     from: "From (IATA)",

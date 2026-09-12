@@ -48,6 +48,7 @@
     f.duration_min = (d1 && d2) ? Math.round((d2 - d1) / 60000) : "";
     if (f.airline_iata && !f.airline_name && window.AIRLINES[f.airline_iata])
       f.airline_name = window.AIRLINES[f.airline_iata];
+    if (!f.traveler_role) f.traveler_role = "self"; // legacy/local rows default to "I'm flying"
     return f;
   }
 

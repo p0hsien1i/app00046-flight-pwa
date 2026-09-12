@@ -128,6 +128,9 @@ function normalizeAero_(arr, dateStr, depIata) {
   return {
     status: item.status || "",
     aircraft: item.aircraft && item.aircraft.model || "",
+    aircraftReg: item.aircraft && (item.aircraft.reg || item.aircraft.registration) || "",
+    airlineName: item.airline && item.airline.name || "",
+    airlineIata: item.airline && item.airline.iata || "",
     dep: dep,
     arr: arrv,
     distanceKm: item.greatCircleDistance && Math.round(item.greatCircleDistance.km) || null,

@@ -1,6 +1,6 @@
 {
-  "name": "Flight in the Air",
-  "short_name": "Flights",
+  "name": "Brian in the Air",
+  "short_name": "Brian Air",
   "description": "Personal flight assistant — trips, timeline, calendar sync, stats.",
   "start_url": "./",
   "scope": "./",
