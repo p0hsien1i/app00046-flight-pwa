@@ -22,11 +22,16 @@ window.LABELS = {
   },
 
   status: {
-    planned: "Planned",
-    ticketed: "Ticketed",
-    "checked-in": "Checked-in",
+    // derived automatically from time + live API status
+    upcoming: "Upcoming",
+    inflight: "In flight",
+    delayed: "Delayed",
     flown: "Flown",
     cancelled: "Cancelled",
+    // legacy values (older stored data)
+    planned: "Upcoming",
+    ticketed: "Upcoming",
+    "checked-in": "Upcoming",
   },
 
   detail: {
@@ -43,6 +48,9 @@ window.LABELS = {
     travelerRoles: { self: "I'm flying", other: "Someone else" },
     whoFlying: "Passenger name",
     whoFlyingPh: "e.g. Mom",
+    manualToggle: "Edit details manually",
+    alertPrefsToggle: "Alert preferences",
+    autoEmpty: "Look up the flight to auto-fill airline, route, times, terminal and aircraft.",
     airline: "Airline",
     date: "Departure date",
     from: "From (IATA)",
@@ -141,13 +149,9 @@ window.LABELS = {
     testOk: "Connected — {n} flights in cloud database.",
     testFail: "Connection failed",
     saveBackend: "Save & sync",
-    calendarSection: "Calendar (PRO)",
-    calendarHint: "Primary: sync to a dedicated “Flights” Google Calendar, then enable it on your iPhone. It updates automatically.",
-    syncAll: "Sync all flights to Google Calendar",
-    copyFeed: "Copy ICS feed URL",
-    feedCopied: "Feed URL copied.",
+    dataSection: "Data",
+    dataHint: "Flights sync to Google Calendar automatically on save. Export or import here if you need a file.",
     exportAll: "Export all flights (.ics)",
-    importSection: "Import",
     importIcs: "Import .ics file",
     importJson: "Bulk import JSON",
     importJsonPh: "Paste a JSON array of flights…",

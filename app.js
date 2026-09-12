@@ -41,6 +41,18 @@
     return Math.floor(min / 60) + "h " + (min % 60 < 10 ? "0" : "") + (min % 60) + "m";
   }
 
+  // status is never entered by the user — derive it from time + live API status
+  function deriveStatus(fl) {
+    if (/cancel/i.test(fl.api_status || "")) return "cancelled";
+    var dep = window.ICS.zonedToUtc(fl.dep_time_local, fl.dep_tz);
+    var arr = window.ICS.zonedToUtc(fl.arr_time_local, fl.arr_tz);
+    var now = Date.now();
+    if (arr && arr.getTime() < now) return "flown";
+    if (dep && dep.getTime() < now) return "inflight";
+    if (/delay/i.test(fl.api_status || "")) return "delayed";
+    return "upcoming";
+  }
+
   var PLANE_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="#4FC3F7"><path d="M21.5 15.5v-2l-8.5-5V3.2c0-.8-.7-1.5-1.5-1.5S10 2.4 10 3.2v5.3l-8.5 5v2L10 13v5.5L7.5 20v1.5l4-1 4 1V20L13 18.5V13l8.5 2.5z"/></svg>';
 
   // ---------- router ----------
@@ -92,7 +104,8 @@
   }
 
   function cardHtml(f, expanded) {
-    var cancelled = f.status === "cancelled";
+    var st = deriveStatus(f);
+    var cancelled = st === "cancelled";
     var isOther = f.traveler_role === "other";
     var overnight = f.arr_time_local && f.dep_time_local &&
       f.arr_time_local.slice(0, 10) !== f.dep_time_local.slice(0, 10);
@@ -103,13 +116,11 @@
     if (f.pnr) chips.push("PNR <b>" + esc(f.pnr) + "</b>");
     if (f.aircraft) chips.push(esc(f.aircraft));
 
-    // "someone else" flights show a WATCHING badge (+ who) and, when known, a live-status pill
-    var topRight = '<span class="pill ' + esc(f.status) + '">' + esc(L.status[f.status] || f.status) + "</span>";
+    // status pill is derived (upcoming/inflight/delayed/flown/cancelled); "someone else" adds a WATCHING badge
+    var topRight = '<span class="pill ' + esc(st) + '">' + esc(L.status[st] || st) + "</span>";
     if (isOther) {
       var who = f.passenger ? " · " + esc(f.passenger) : "";
-      var live = f.api_status ? '<span class="pill live">' + esc(f.api_status) + "</span> " : "";
-      var cancel = cancelled ? '<span class="pill cancelled">' + esc(L.status.cancelled) + "</span> " : "";
-      topRight = cancel + live + '<span class="pill watching">' + esc(L.trips.watchingBadge) + who + "</span>";
+      topRight = topRight + ' <span class="pill watching">' + esc(L.trips.watchingBadge) + who + "</span>";
     }
 
     return '<div class="card' + (cancelled ? " cancelled-card" : "") + '" data-id="' + esc(f.id) + '">' +
@@ -271,19 +282,11 @@
     var arrTime = (f.arr_time_local || "").slice(11, 16);
     var isOther0 = f.traveler_role === "other";
 
-    var statusOpts = ["planned", "ticketed", "checked-in", "flown", "cancelled"].map(function (s) {
-      return '<option value="' + s + '"' + (f.status === s ? " selected" : "") + ">" + esc(L.status[s]) + "</option>";
-    }).join("");
-
-    var cabinOpts = ["", "economy", "premium", "business", "first"].map(function (c) {
-      return '<option value="' + c + '"' + ((f.cabin || "") === c ? " selected" : "") + ">" + esc(L.detail.cabins[c]) + "</option>";
-    }).join("");
-
     var html =
       '<div class="page-title"><a class="back-link" href="#/trips">‹ ' + esc(L.tabs.trips) + "</a><span>" +
       esc(isNew ? L.detail.newTitle : f.flight_no) + '</span><span style="width:48px"></span></div>' +
 
-      // ---- lazy lookup: flight number + date -> auto-fill everything ----
+      // ---- 1) the flight: number + date -> look up auto-fills everything ----
       '<div class="lookup-card">' +
       '<div class="form-grid">' +
       field("f-no", L.detail.flightNo, inp("f-no", f.flight_no, L.detail.flightNoPh)) +
@@ -293,7 +296,7 @@
       '<div class="hint" id="lookup-hint">' + esc(L.detail.lookupHint) + "</div>" +
       "</div>" +
 
-      // ---- who is flying ----
+      // ---- 2) who is flying ----
       '<div class="field full"><label>' + esc(L.detail.travelerRole) + "</label>" +
       '<div class="role-row">' +
       '<label class="role-opt' + (isOther0 ? "" : " active") + '" data-role="self"><input type="radio" name="role" value="self"' + (isOther0 ? "" : " checked") + ">" + esc(L.detail.travelerRoles.self) + "</label>" +
@@ -301,37 +304,36 @@
       "</div></div>" +
       '<div class="field full' + (isOther0 ? "" : " hidden") + '" id="who-field"><label for="f-who">' + esc(L.detail.whoFlying) + "</label>" +
       inp("f-who", isOther0 ? f.passenger : "", L.detail.whoFlyingPh) + "</div>" +
+      '<div class="field full' + (isOther0 ? "" : " hidden") + '" id="chat-field"><label for="f-chat">' + esc(L.detail.notifyChat) + "</label>" +
+      inp("f-chat", f.notify_chat_id, L.detail.notifyChatPh) +
+      '<div class="hint">' + esc(L.detail.notifyChatHint) + "</div></div>" +
 
-      // ---- the rest (editable fallback / details) ----
-      '<div class="form-grid">' +
+      // ---- everything below is auto: read-only summary + collapsible manual fallback ----
+      '<div id="auto-info"></div>' +
+
+      '<button class="btn small ghost" id="btn-manual">' + esc(L.detail.manualToggle) + "</button>" +
+      '<div id="manual-wrap" class="hidden"><div class="form-grid">' +
       field("f-airline", L.detail.airline, inp("f-airline", f.airline_name)) +
       field("f-dep", L.detail.from, inp("f-dep", f.dep_iata, "TPE")) +
       field("f-arr", L.detail.to, inp("f-arr", f.arr_iata, "LAX")) +
       field("f-deptime", L.detail.depTime, inp("f-deptime", depTime, "", "time")) +
       field("f-arrdate", L.detail.arrDate, inp("f-arrdate", arrDate, "", "date")) +
       field("f-arrtime", L.detail.arrTime, inp("f-arrtime", arrTime, "", "time")) +
-      field("f-status", L.detail.status, '<select id="f-status">' + statusOpts + "</select>") +
-      field("f-pnr", L.detail.pnr, inp("f-pnr", f.pnr)) +
-      field("f-seat", L.detail.seat, inp("f-seat", f.seat)) +
-      field("f-cabin", L.detail.cabin, '<select id="f-cabin">' + cabinOpts + "</select>") +
       field("f-depterm", L.detail.depTerminal, inp("f-depterm", f.dep_terminal)) +
       field("f-depgate", L.detail.depGate, inp("f-depgate", f.dep_gate)) +
       field("f-arrterm", L.detail.arrTerminal, inp("f-arrterm", f.arr_terminal)) +
       field("f-arrgate", L.detail.arrGate, inp("f-arrgate", f.arr_gate)) +
       field("f-aircraft", L.detail.aircraft, inp("f-aircraft", f.aircraft)) +
-      field("f-notes", L.detail.notes, '<textarea id="f-notes" rows="2">' + esc(f.notes || "") + "</textarea>", true) +
-      "</div>" +
-      // ---- Telegram alert preferences (+ optional pickup contact) ----
-      '<div class="section-label">' + esc(L.detail.notifySection) + "</div>" +
-      '<div class="notify-grid">' +
+      "</div></div>" +
+
+      '<button class="btn small ghost" id="btn-alertprefs">' + esc(L.detail.alertPrefsToggle) + "</button>" +
+      '<div id="alertprefs-wrap" class="hidden"><div class="notify-grid">' +
       ["delay", "gate", "baggage", "landed"].map(function (k) {
         return '<label class="notify-opt"><input type="checkbox" class="f-notify" value="' + k + '"' +
           (jsPrefOn(f.notify_prefs, k) ? " checked" : "") + "> " + esc(L.detail.notify[k]) + "</label>";
       }).join("") +
-      "</div>" +
-      '<div class="field full"><label for="f-chat">' + esc(L.detail.notifyChat) + "</label>" +
-      inp("f-chat", f.notify_chat_id, L.detail.notifyChatPh) +
-      '<div class="hint">' + esc(L.detail.notifyChatHint) + "</div></div>" +
+      "</div></div>" +
+
       '<div class="msg" id="detail-msg"></div>' +
       '<button class="btn primary" id="btn-save">' + esc(L.detail.save) + "</button>" +
       (isNew ? "" :
@@ -343,10 +345,13 @@
         '<div class="msg" id="insight-msg"></div>' +
         '<div style="height:8px"></div>' +
         '<button class="btn" id="btn-ics">' + esc(L.detail.exportIcs) + "</button>" +
-        '<button class="btn" id="btn-gcal">' + esc(L.detail.syncCalendar) + "</button>" +
         '<button class="btn danger" id="btn-del">' + esc(L.detail.delete) + "</button>");
 
     $("#page-detail").innerHTML = html;
+
+    // collapsible sections
+    $("#btn-manual").addEventListener("click", function () { $("#manual-wrap").classList.toggle("hidden"); });
+    $("#btn-alertprefs").addEventListener("click", function () { $("#alertprefs-wrap").classList.toggle("hidden"); });
 
     // role radio → toggle "who's flying" field
     document.querySelectorAll(".role-opt").forEach(function (opt) {
@@ -354,7 +359,9 @@
         document.querySelectorAll(".role-opt").forEach(function (o) { o.classList.remove("active"); });
         opt.classList.add("active");
         opt.querySelector("input").checked = true;
-        $("#who-field").classList.toggle("hidden", opt.dataset.role !== "other");
+        var other = opt.dataset.role === "other";
+        $("#who-field").classList.toggle("hidden", !other);
+        $("#chat-field").classList.toggle("hidden", !other);
       });
     });
     function currentRole() {
@@ -392,6 +399,30 @@
       el.textContent = text; el.className = "msg " + (cls || "dim");
     }
 
+    // read-only summary of the auto-filled details (airline/route/times/gate/aircraft/status)
+    function renderAutoInfo() {
+      var dep = $("#f-dep").value.trim().toUpperCase(), arr = $("#f-arr").value.trim().toUpperCase();
+      var dt = $("#f-depdate").value, tm = $("#f-deptime").value, at = $("#f-arrtime").value;
+      var el = $("#auto-info");
+      if (!dep || !arr || !dt) { el.innerHTML = '<div class="auto-info empty">' + esc(L.detail.autoEmpty) + "</div>"; return; }
+      var snap = {
+        dep_time_local: dt + "T" + (tm || "00:00"), arr_time_local: ($("#f-arrdate").value || dt) + "T" + (at || "00:00"),
+        dep_tz: (window.AIRPORTS[dep] || [])[5] || "", arr_tz: (window.AIRPORTS[arr] || [])[5] || "", api_status: f.api_status,
+      };
+      var st = deriveStatus(snap);
+      var line1 = ($("#f-airline").value || "") + " · " + dep + " → " + arr;
+      var bits = [];
+      if (tm) bits.push(tm + (at ? " → " + at : ""));
+      var term = $("#f-depterm").value, gate = $("#f-depgate").value, ac = $("#f-aircraft").value;
+      if (term) bits.push("T" + term.replace(/^T/i, "") + (gate ? " · Gate " + gate : ""));
+      if (ac) bits.push(ac);
+      if (f.pnr) bits.push("PNR " + f.pnr);
+      el.innerHTML = '<div class="auto-info">' +
+        '<span class="pill ' + esc(st) + '">' + esc(L.status[st] || st) + "</span>" +
+        '<div class="ai-line1">' + esc(line1) + "</div>" +
+        (bits.length ? '<div class="ai-line2">' + esc(bits.join("  ·  ")) + "</div>" : "") + "</div>";
+    }
+
     // fill the whole form from a flightinfo payload; also stashes reg + live status on f
     function applyFlightInfo(d) {
       if (!d) return;
@@ -416,6 +447,7 @@
       // refresh the airport-name hints without re-adding input listeners
       $("#f-dep").dispatchEvent(new Event("input"));
       $("#f-arr").dispatchEvent(new Event("input"));
+      renderAutoInfo();
     }
 
     function doLookup() {
@@ -427,6 +459,8 @@
       var depIata = $("#f-dep").value.trim().toUpperCase();
       API.flightinfo(flightNo, date, depIata).then(function (res) {
         if (!res.ok) {
+          // can't auto-fill → open the manual section so the user can enter route/times
+          $("#manual-wrap").classList.remove("hidden");
           if (res.error === "not_found") msg(L.detail.lookupManual, "dim");
           else if (res.error === "monthly_quota" || res.error === "daily_cap") msg(L.detail.fetchQuota, "dim");
           else msg(L.common.error + ": " + (res.error || ""), "err");
@@ -437,6 +471,7 @@
       }).catch(function (e) { msg(L.common.error + ": " + e.message, "err"); });
     }
     $("#btn-lookup").addEventListener("click", function () { doLookup(); });
+    renderAutoInfo(); // initial summary for existing flights
 
     function collect() {
       var flightNo = $("#f-no").value.trim().toUpperCase();
@@ -461,9 +496,6 @@
         // no fallback to the previous airport's tz — unknown IATA means unknown tz
         dep_tz: (window.AIRPORTS[depIata] || [])[5] || "",
         arr_tz: (window.AIRPORTS[arrIata] || [])[5] || "",
-        status: $("#f-status").value,
-        pnr: $("#f-pnr").value.trim(), seat: $("#f-seat").value.trim(),
-        cabin: $("#f-cabin").value,
         dep_terminal: $("#f-depterm").value.trim(), dep_gate: $("#f-depgate").value.trim(),
         arr_terminal: $("#f-arrterm").value.trim(), arr_gate: $("#f-arrgate").value.trim(),
         aircraft: $("#f-aircraft").value.trim(),
@@ -471,8 +503,8 @@
         passenger: passenger,
         notify_prefs: notifyPrefs,
         notify_chat_id: $("#f-chat").value.trim(),
-        notes: $("#f-notes").value.trim(),
       });
+      out.status = deriveStatus(out); // status is auto, never entered (pnr/seat/notes preserved from f)
       return out;
     }
 
@@ -497,15 +529,6 @@
       $("#btn-del").addEventListener("click", function () {
         if (!confirm(L.detail.deleteConfirm)) return;
         API.remove(f.id).then(function () { location.hash = "#/trips"; });
-      });
-
-      $("#btn-gcal").addEventListener("click", function () {
-        if (API.mode() !== "backend") { msg(L.detail.fetchNoBackend, "err"); return; }
-        msg(L.common.loading);
-        API.syncCalendar(f.id).then(function (res) {
-          if (res.ok) msg(L.detail.synced, "ok");
-          else msg(L.detail.syncFailed + ": " + (res.error || ""), "err");
-        }).catch(function (e) { msg(L.detail.syncFailed + ": " + e.message, "err"); });
       });
 
       // ---- insights: on-time history + inbound aircraft ----
@@ -589,16 +612,11 @@
 
   // ---------- stats page ----------
 
-  var includeUpcoming = null; // adaptive default, see renderStats
-
   function statFlights() {
-    // stats only count flights I'm actually on (traveler_role=self); "someone else" flights excluded
-    var all = API.flights().filter(function (f) {
-      return f.status !== "cancelled" && (f.traveler_role || "self") === "self";
+    // only flights I actually flew: mine (self), not cancelled, arrival already in the past
+    return API.flights().filter(function (f) {
+      return (f.traveler_role || "self") === "self" && deriveStatus(f) === "flown";
     });
-    var flown = all.filter(function (f) { return f.status === "flown"; });
-    if (includeUpcoming === null) includeUpcoming = flown.length === 0;
-    return includeUpcoming ? all : flown;
   }
 
   function renderStats() {
@@ -638,8 +656,6 @@
     var around = (km / 40075).toFixed(2);
 
     var html =
-      '<div class="toggle-row"><input type="checkbox" id="stats-upcoming"' + (includeUpcoming ? " checked" : "") +
-      '><label for="stats-upcoming">' + esc(L.stats.includeUpcoming) + "</label></div>" +
       '<div class="tiles">' +
       tile(flights.length, L.stats.flights) +
       tile(hours, L.stats.hours) +
@@ -656,11 +672,8 @@
       rankSection(L.stats.topRoutes, routes) +
       rankSection(L.stats.topAircraft, aircraft);
 
-    $("#stats-body").innerHTML = API.flights().length ? html
+    $("#stats-body").innerHTML = flights.length ? html
       : '<div class="empty-state">' + esc(L.stats.empty) + "</div>";
-
-    var cb = $("#stats-upcoming");
-    if (cb) cb.addEventListener("change", function () { includeUpcoming = cb.checked; renderStats(); });
   }
 
   function rankSection(title, counts) {
@@ -802,24 +815,15 @@
       '<button class="btn small primary" id="btn-savebe">' + esc(L.settings.saveBackend) + "</button>" +
       '<div class="msg" id="be-msg"></div></div>' +
 
-      '<div class="settings-card"><div class="section-label" style="margin-top:0">' + esc(L.settings.calendarSection) + "</div>" +
-      '<p class="help">' + esc(L.settings.calendarHint) + "</p>" +
-      '<button class="btn" id="btn-syncall">' + esc(L.settings.syncAll) + "</button>" +
-      '<button class="btn" id="btn-feed">' + esc(L.settings.copyFeed) + "</button>" +
-      '<button class="btn" id="btn-exportall">' + esc(L.settings.exportAll) + "</button>" +
-      '<div class="msg" id="cal-msg"></div></div>' +
-
-      '<div class="settings-card"><div class="section-label" style="margin-top:0">' + esc(L.settings.importSection) + "</div>" +
+      '<div class="settings-card"><div class="section-label" style="margin-top:0">' + esc(L.settings.dataSection) + "</div>" +
+      '<p class="help">' + esc(L.settings.dataHint) + "</p>" +
       '<input type="file" id="ics-file" accept=".ics,text/calendar" class="hidden">' +
+      '<button class="btn" id="btn-exportall">' + esc(L.settings.exportAll) + "</button>" +
       '<button class="btn" id="btn-importics">' + esc(L.settings.importIcs) + "</button>" +
       '<div class="field full" style="margin-top:10px"><label>' + esc(L.settings.importJson) + "</label>" +
       '<textarea id="json-import" rows="3" placeholder="' + esc(L.settings.importJsonPh) + '"></textarea></div>' +
       '<button class="btn small" id="btn-previewjson">' + esc(L.settings.importPreview) + "</button>" +
       '<div id="import-preview"></div><div class="msg" id="imp-msg"></div></div>' +
-
-      '<div class="settings-card"><div class="section-label" style="margin-top:0">' + esc(L.settings.telegramSection) + "</div>" +
-      '<button class="btn" id="btn-tg">' + esc(L.settings.testTelegram) + "</button>" +
-      '<div class="msg" id="tg-msg"></div></div>' +
 
       '<div class="settings-card"><div class="section-label" style="margin-top:0">' + esc(L.settings.aboutSection) + "</div>" +
       '<p class="help">' + esc(L.settings.version) + " " + APP_VERSION +
@@ -863,22 +867,6 @@
         .catch(function (e) { m("#be-msg", L.settings.testFail + ": " + e.message, "err"); });
     });
 
-    $("#btn-syncall").addEventListener("click", function () {
-      if (API.mode() !== "backend") { m("#cal-msg", L.detail.fetchNoBackend, "err"); return; }
-      m("#cal-msg", L.common.loading);
-      API.syncCalendar(true).then(function (res) {
-        if (res.ok) m("#cal-msg", L.detail.synced + " (" + res.synced + ")", "ok");
-        else m("#cal-msg", L.detail.syncFailed + ": " + (res.error || ""), "err");
-      }).catch(function (e) { m("#cal-msg", L.detail.syncFailed + ": " + e.message, "err"); });
-    });
-
-    $("#btn-feed").addEventListener("click", function () {
-      var url = API.icsFeedUrl();
-      if (!url) { m("#cal-msg", L.detail.fetchNoBackend, "err"); return; }
-      navigator.clipboard.writeText(url).then(function () { m("#cal-msg", L.settings.feedCopied, "ok"); })
-        .catch(function () { prompt("ICS feed URL:", url); });
-    });
-
     $("#btn-exportall").addEventListener("click", function () {
       window.ICS.exportAll(API.flights());
     });
@@ -900,15 +888,6 @@
         if (!Array.isArray(arr)) throw new Error("expected a JSON array");
         showImportPreview(arr);
       } catch (e) { m("#imp-msg", String(e.message || e), "err"); }
-    });
-
-    $("#btn-tg").addEventListener("click", function () {
-      if (API.mode() !== "backend") { m("#tg-msg", L.detail.fetchNoBackend, "err"); return; }
-      m("#tg-msg", L.common.loading);
-      API.testTelegram().then(function (res) {
-        if (res.ok) m("#tg-msg", L.settings.telegramSent, "ok");
-        else m("#tg-msg", L.common.error + ": " + (res.error || ""), "err");
-      }).catch(function (e) { m("#tg-msg", L.common.error + ": " + e.message, "err"); });
     });
 
     $("#btn-update").addEventListener("click", function () {
@@ -1054,6 +1033,17 @@
     $("#settings-title").textContent = L.settings.title;
     $("#update-banner").textContent = L.settings.updateBanner;
     $("#fab").addEventListener("click", function () { location.hash = "#/new"; });
+
+    // one-tap connect link: #connect=<base64("url|token")> auto-configures the backend on this device
+    (function () {
+      var m = /[#&]connect=([^&]+)/.exec(location.hash);
+      if (!m) return;
+      try {
+        var parts = decodeURIComponent(escape(atob(decodeURIComponent(m[1])))).split("|");
+        if (parts[0] && parts[1]) API.saveSettings({ backendUrl: parts[0], token: parts[1] });
+      } catch (e) { /* malformed link — ignore */ }
+      location.hash = "#/trips"; // strip credentials from the URL bar
+    })();
 
     API.onChange(render);
     window.addEventListener("hashchange", route);
