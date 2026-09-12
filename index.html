@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Flight in the Air</title>
+  <meta name="theme-color" content="#0A0F1E">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Flights">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div id="update-banner" class="banner update hidden"></div>
+  <div id="offline-banner" class="banner offline hidden"></div>
+
+  <section id="page-trips" class="page active">
+    <div class="page-title"><span id="trips-title"></span></div>
+    <div id="trips-list"></div>
+  </section>
+
+  <section id="page-detail" class="page"></section>
+
+  <section id="page-stats" class="page">
+    <div class="page-title"><span id="stats-title"></span></div>
+    <div id="stats-body"></div>
+  </section>
+
+  <section id="page-settings" class="page">
+    <div class="page-title"><span id="settings-title"></span></div>
+    <div id="settings-body"></div>
+  </section>
+
+  <button id="fab" class="fab" aria-label="Add flight">+</button>
+
+  <nav class="tabbar">
+    <a class="tab active" data-page="trips" href="#/trips">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.5 15.5v-2l-8.5-5V3.2c0-.8-.7-1.5-1.5-1.5S10 2.4 10 3.2v5.3l-8.5 5v2L10 13v5.5L7.5 20v1.5l4-1 4 1V20L13 18.5V13l8.5 2.5z"/></svg>
+      <span id="tab-trips-label"></span>
+    </a>
+    <a class="tab" data-page="stats" href="#/stats">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 20h3v-9H4v9zm6.5 0h3V4h-3v16zm6.5 0h3v-6h-3v6z"/></svg>
+      <span id="tab-stats-label"></span>
+    </a>
+    <a class="tab" data-page="settings" href="#/settings">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.4 13c.04-.33.06-.66.06-1s-.02-.67-.06-1l2.1-1.65a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.6-.22l-2.49 1a7.3 7.3 0 0 0-1.73-1l-.38-2.65A.5.5 0 0 0 13.93 2h-4a.5.5 0 0 0-.5.42l-.37 2.65c-.63.26-1.2.6-1.74 1l-2.48-1a.5.5 0 0 0-.61.22l-2 3.46a.5.5 0 0 0 .12.64L4.55 11c-.04.33-.06.66-.06 1s.02.67.06 1l-2.1 1.65a.5.5 0 0 0-.12.64l2 3.46c.13.23.4.32.6.22l2.5-1c.53.41 1.1.75 1.73 1l.37 2.65c.05.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.26 1.2-.6 1.73-1l2.5 1c.22.09.47 0 .6-.22l2-3.46a.5.5 0 0 0-.12-.64L19.4 13zm-7.47 2.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+      <span id="tab-settings-label"></span>
+    </a>
+  </nav>
+
+  <script src="labels.js"></script>
+  <script src="airports.js"></script>
+  <script src="vendor/worldmap.js"></script>
+  <script src="vendor/ical.js"></script>
+  <script src="ics.js"></script>
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
