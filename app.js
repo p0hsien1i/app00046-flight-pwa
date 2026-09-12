@@ -604,10 +604,11 @@
   function renderStats() {
     var flights = statFlights();
     var km = 0, min = 0;
-    var airports = {}, airlines = {}, countries = {}, routes = {};
+    var airports = {}, airlines = {}, countries = {}, routes = {}, aircraft = {}, perYear = {};
+    var longest = null;
     flights.forEach(function (f) {
-      km += f.distance_km || 0;
-      min += f.duration_min || 0;
+      var dist = Number(f.distance_km) || 0, dur = Number(f.duration_min) || 0;
+      km += dist; min += dur;
       [f.dep_iata, f.arr_iata].forEach(function (ia) {
         if (!ia) return;
         airports[ia] = (airports[ia] || 0) + 1;
@@ -616,9 +617,15 @@
       });
       var al = f.airline_name || f.airline_iata;
       if (al) airlines[al] = (airlines[al] || 0) + 1;
-      if (f.dep_iata && f.arr_iata) {
-        var r = f.dep_iata + " → " + f.arr_iata;
-        routes[r] = (routes[r] || 0) + 1;
+      if (f.aircraft) aircraft[f.aircraft] = (aircraft[f.aircraft] || 0) + 1;
+      if (f.dep_iata && f.arr_iata) routes[f.dep_iata + " → " + f.arr_iata] = (routes[f.dep_iata + " → " + f.arr_iata] || 0) + 1;
+      if (dist && (!longest || dist > longest.km)) longest = { km: dist, route: f.dep_iata + "–" + f.arr_iata };
+      // year-in-review buckets (by departure year)
+      var yr = (f.dep_time_local || "").slice(0, 4);
+      if (yr) {
+        var y = perYear[yr] || (perYear[yr] = { n: 0, km: 0, min: 0, countries: {} });
+        y.n++; y.km += dist; y.min += dur;
+        [f.dep_iata, f.arr_iata].forEach(function (ia) { var a = window.AIRPORTS[ia]; if (a) y.countries[a[2]] = true; });
       }
     });
 
@@ -640,11 +647,14 @@
       tile(Object.keys(airports).length, L.stats.airports) +
       tile(Object.keys(airlines).length, L.stats.airlines) +
       tile(Object.keys(countries).length, L.stats.countries) +
+      (longest ? tile(longest.km.toLocaleString("en-US"), L.stats.longest, longest.route) : "") +
       "</div>" +
       '<div class="map-card">' + mapSvg(airports, flights, countries) + "</div>" +
+      yearReviewSection(perYear) +
       rankSection(L.stats.topAirlines, airlines) +
       rankSection(L.stats.topAirports, airports) +
-      rankSection(L.stats.topRoutes, routes);
+      rankSection(L.stats.topRoutes, routes) +
+      rankSection(L.stats.topAircraft, aircraft);
 
     $("#stats-body").innerHTML = API.flights().length ? html
       : '<div class="empty-state">' + esc(L.stats.empty) + "</div>";
@@ -659,6 +669,24 @@
     return '<div class="section-label">' + esc(title) + "</div>" +
       top.map(function (k) {
         return '<div class="rank-row"><span>' + esc(k) + '</span><span class="rr-count">' + counts[k] + "</span></div>";
+      }).join("");
+  }
+
+  // Flighty-style year-in-review: one row per year (newest first)
+  function yearReviewSection(perYear) {
+    var years = Object.keys(perYear).sort(function (a, b) { return b - a; });
+    if (!years.length) return "";
+    return '<div class="section-label">' + esc(L.stats.yearReview) + "</div>" +
+      years.map(function (yr) {
+        var y = perYear[yr];
+        var parts = [
+          y.n + " " + (y.n === 1 ? L.stats.flightOne : L.stats.flights.toLowerCase()),
+          (y.min / 60).toFixed(0) + "h",
+          y.km.toLocaleString("en-US") + " km",
+          Object.keys(y.countries).length + " " + L.stats.countries.toLowerCase(),
+        ];
+        return '<div class="rank-row"><span class="rr-count">' + esc(yr) + '</span><span style="text-align:right;font-size:13px">' +
+          esc(parts.join(" · ")) + "</span></div>";
       }).join("");
   }
 

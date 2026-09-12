@@ -123,6 +123,10 @@ window.LABELS = {
     topAirlines: "Top airlines",
     topAirports: "Top airports",
     topRoutes: "Top routes",
+    topAircraft: "Top aircraft",
+    longest: "Longest (km)",
+    yearReview: "Year in review",
+    flightOne: "flight",
     empty: "No flights to count yet.",
   },
 
