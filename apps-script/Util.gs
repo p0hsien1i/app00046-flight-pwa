@@ -71,10 +71,11 @@ function icsUtc_(d) { return Utilities.formatDate(d, "UTC", "yyyyMMdd'T'HHmmss'Z
 
 function nowIso_() { return new Date().toISOString(); }
 
-// shared flight title: "[passenger] FLIGHTNO DEP-ARR" (passenger prefix omitted if blank)
+// shared flight title. Prefix the passenger only for flights someone ELSE is on
+// ("[Mom] TG343 BKK-AMD"); my own flights are just "JX002 TPE-LAX".
 function flightTitle_(f) {
   var route = f.flight_no + " " + f.dep_iata + "-" + f.arr_iata;
-  return f.passenger ? "[" + f.passenger + "] " + route : route;
+  return (f.traveler_role === "other" && f.passenger) ? "[" + f.passenger + "] " + route : route;
 }
 
 // settings sheet as kv store
