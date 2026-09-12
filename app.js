@@ -255,6 +255,14 @@
     if (!f || f.status === "deleted") { location.hash = "#/trips"; return; }
     if (!f.traveler_role) f.traveler_role = "self";
 
+    // notify_prefs: "" = all on, "none" = all off, else comma list of enabled keys
+    function jsPrefOn(prefs, key) {
+      prefs = (prefs || "").trim();
+      if (!prefs) return true;
+      if (prefs === "none") return false;
+      return ("," + prefs + ",").indexOf("," + key + ",") >= 0;
+    }
+
     var depDate = (f.dep_time_local || "").slice(0, 10);
     var depTime = (f.dep_time_local || "").slice(11, 16);
     var arrDate = (f.arr_time_local || "").slice(0, 10);
@@ -311,6 +319,17 @@
       field("f-aircraft", L.detail.aircraft, inp("f-aircraft", f.aircraft)) +
       field("f-notes", L.detail.notes, '<textarea id="f-notes" rows="2">' + esc(f.notes || "") + "</textarea>", true) +
       "</div>" +
+      // ---- Telegram alert preferences (+ optional pickup contact) ----
+      '<div class="section-label">' + esc(L.detail.notifySection) + "</div>" +
+      '<div class="notify-grid">' +
+      ["delay", "gate", "baggage", "landed"].map(function (k) {
+        return '<label class="notify-opt"><input type="checkbox" class="f-notify" value="' + k + '"' +
+          (jsPrefOn(f.notify_prefs, k) ? " checked" : "") + "> " + esc(L.detail.notify[k]) + "</label>";
+      }).join("") +
+      "</div>" +
+      '<div class="field full"><label for="f-chat">' + esc(L.detail.notifyChat) + "</label>" +
+      inp("f-chat", f.notify_chat_id, L.detail.notifyChatPh) +
+      '<div class="hint">' + esc(L.detail.notifyChatHint) + "</div></div>" +
       '<div class="msg" id="detail-msg"></div>' +
       '<button class="btn primary" id="btn-save">' + esc(L.detail.save) + "</button>" +
       (isNew ? "" :
@@ -424,6 +443,9 @@
       if (!flightNo || !depIata || !arrIata || !depDate || !depTime || !arrTime) return null;
       var role = currentRole();
       var passenger = role === "other" ? $("#f-who").value.trim() : (f.passenger && f.traveler_role === "self" ? f.passenger : "Brian Li");
+      // notify prefs: all 4 checked -> "" (default all-on); none -> "none"; else comma list
+      var checked = Array.prototype.slice.call(document.querySelectorAll(".f-notify:checked")).map(function (c) { return c.value; });
+      var notifyPrefs = checked.length === 4 ? "" : (checked.length === 0 ? "none" : checked.join(","));
       var m = /^([A-Z0-9]{2})\d/.exec(flightNo);
       var out = Object.assign({}, f, {
         flight_no: flightNo,
@@ -443,6 +465,8 @@
         aircraft: $("#f-aircraft").value.trim(),
         traveler_role: role,
         passenger: passenger,
+        notify_prefs: notifyPrefs,
+        notify_chat_id: $("#f-chat").value.trim(),
         notes: $("#f-notes").value.trim(),
       });
       return out;

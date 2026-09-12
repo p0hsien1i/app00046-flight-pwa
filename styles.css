@@ -101,6 +101,15 @@ body {
 .role-opt.active { color: var(--accent); border-color: var(--accent); background: rgba(79,195,247,0.08); }
 .role-row input { display: none; }
 
+/* notification preference checkboxes */
+.notify-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
+.notify-opt {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface-2); border-radius: var(--radius-sm);
+  padding: 10px 11px; font-size: 14px; cursor: pointer;
+}
+.notify-opt input { accent-color: var(--accent); width: 18px; height: 18px; }
+
 .card-body {
   display: grid; grid-template-columns: 1fr auto 1fr;
   align-items: center; gap: 8px;

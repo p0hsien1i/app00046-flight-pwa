@@ -119,6 +119,7 @@ function normalizeAero_(arr, dateStr, depIata) {
       iata: s.airport && s.airport.iata || "",
       terminal: s.terminal || "",
       gate: s.gate || "",
+      baggageBelt: s.baggageBelt || "",
       schedLocal: t(s.scheduledTime && s.scheduledTime.local),
       revisedLocal: t(s.revisedTime && s.revisedTime.local),
     };

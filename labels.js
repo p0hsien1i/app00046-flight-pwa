@@ -97,6 +97,12 @@ window.LABELS = {
     inboundNoBuffer: "Inbound: {flight} from {from}, arrives {arr} ({status})",
     inboundNoReg: "Look up the flight first so we know the aircraft (registration assigned closer to departure).",
     inboundNone: "No inbound flight found for this aircraft today.",
+    // batch 3 — notifications
+    notifySection: "Telegram alerts",
+    notify: { delay: "Delays", gate: "Gate / terminal", baggage: "Baggage belt", landed: "Landed" },
+    notifyChat: "Send alerts to (Telegram chat ID)",
+    notifyChatPh: "blank = me · or a pickup person's chat ID",
+    notifyChatHint: "For flights you're watching, send delay/landed alerts straight to whoever's picking them up.",
   },
 
   stats: {
