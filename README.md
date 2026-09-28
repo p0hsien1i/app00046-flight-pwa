@@ -33,7 +33,7 @@ sync, flight stats with a world map, and Telegram reminders.
 
 1. Create a Google Spreadsheet named `app00046-flights-db`; copy its ID from the URL.
 2. Go to [script.google.com](https://script.google.com) → New project → create one file per
-   `apps-script/*.gs` and paste the contents (7 files).
+   `apps-script/*.gs` and paste the contents (8 files).
 3. In `Code.gs`, set `SPREADSHEET_ID`.
 4. Run `setup()` once from the editor. Approve the OAuth consent
    (*unverified app → Advanced → continue*). Scopes: Sheets, Calendar, external requests, triggers.
@@ -46,7 +46,9 @@ sync, flight stats with a world map, and Telegram reminders.
    | `TELEGRAM_CHAT_ID` | your chat id |
 6. **Deploy → New deployment → Web app** — *Execute as: Me*, *Who has access: Anyone*.
    Copy the `/exec` URL.
-7. Run `setupTriggers()` once (installs the hourly notification cron).
+7. Run `setupTriggers()` once (installs the hourly notification cron), then `setupBackupTrigger()`
+   once (weekly Monday snapshot of the spreadsheet into an *app00046 backups* Drive folder, 12 kept;
+   asks for Drive permission and takes the first backup immediately).
 8. ⚠️ **After every later code change**: Deploy → **Manage deployments → ✏️ → Version: New**.
    (Editing code without a new version is the #1 "why didn't it change" trap.)
 
@@ -73,7 +75,7 @@ Open the app → **Settings** → paste the `/exec` URL and your `API_TOKEN` →
 ## Data model
 
 Sheet `flights` — one row per flight, `id = {FLIGHTNO}-{YYYYMMDD}-{DEPIATA}` (never changes;
-keys the ICS UID and the Calendar event). Soft delete: `status=deleted` (rows are never removed).
+keys the ICS UID and the Calendar event). Soft delete: `status=deleted` (rows are never removed). Weekly full-file backups: `Backup.gs`.
 Other sheets: `settings` (calendar id, quota counters), `api_cache`, `notif_log` (dedupe), `log`.
 
 ## Quota guards (AeroDataBox free tier)
