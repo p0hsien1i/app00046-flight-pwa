@@ -77,6 +77,13 @@ Open the app → **Settings** → paste the `/exec` URL and your `API_TOKEN` →
 
 Sheet `flights` — one row per flight, `id = {FLIGHTNO}-{YYYYMMDD}-{DEPIATA}` (never changes;
 keys the ICS UID and the Calendar event). Soft delete: `status=deleted` (rows are never removed). Weekly full-file backups: `Backup.gs`.
+Every overwrite/delete first copies the previous row into the `history` sheet (created on first use).
+
+**No silent overwrites:** each save carries the `seq` the device last saw (`base_seq`); if the row
+has moved on since (another device, or the hourly cron), the backend answers `conflict`, the app
+reloads the latest version and asks the user to redo the edit. Offline edits that conflict are
+dropped with an alert instead of overwriting newer data. When a device connects, flights that
+exist only on that device are uploaded with `onlyNew` (never overwrites or resurrects a row).
 Other sheets: `settings` (calendar id, quota counters), `api_cache`, `notif_log` (dedupe), `log`.
 
 ## Quota guards (AeroDataBox free tier)

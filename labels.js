@@ -7,6 +7,9 @@ window.LABELS = {
   trips: {
     upcoming: "Upcoming",
     past: "Past",
+    showPast: "Show past flights ({n})",
+    hidePast: "Hide past flights ({n})",
+    noUpcoming: "No upcoming flights.",
     empty: "No flights yet.\nTap + to add your first flight.",
     addFlight: "Add flight",
     stages: ["CHECK-IN", "BOARDING", "TAKEOFF", "LANDING"],
@@ -48,6 +51,7 @@ window.LABELS = {
     travelerRoles: { self: "I'm flying", other: "Someone else" },
     whoFlying: "Passenger name",
     whoFlyingPh: "e.g. Mom",
+    conflict: "This flight was changed on another device (or by a live update) since you opened it. The latest version is loaded below — please make your change again and save.",
     manualToggle: "Edit details manually",
     alertPrefsToggle: "Alert preferences",
     autoEmpty: "Look up the flight to auto-fill airline, route, times, terminal and aircraft.",
@@ -152,6 +156,7 @@ window.LABELS = {
     connectHint: "Set up another phone or computer in one tap: copy this link and open it there. It contains your token — keep it private (e.g. a message to yourself), don't share it.",
     copyConnectLink: "Copy connect link",
     connectCopied: "Link copied — open it on the new device.",
+    uploadedLocal: "Connected — {n} flights that were only on this device were added to the cloud.",
     dataSection: "Data",
     dataHint: "Flights sync to Google Calendar automatically on save. Export or import here if you need a file.",
     exportAll: "Export all flights (.ics)",
@@ -179,5 +184,6 @@ window.LABELS = {
     error: "Something went wrong",
     copied: "Copied.",
     loading: "Loading…",
+    conflictQueued: "{n} offline edit(s) were not applied: the flight was changed elsewhere in the meantime, and the newer version was kept. Please check and redo them if needed.",
   },
 };
