@@ -1,9 +1,9 @@
 // Backup.gs — weekly snapshot of the whole spreadsheet into an "app00046 backups" Drive folder.
 // Sheets version history covers accidental edits; this covers the file itself being deleted
 // or corrupted. Run setupBackupTrigger() once by hand.
-// Scope: only drive.file (files this script itself created) — the copy is made through
-// SpreadsheetApp, so the script never needs access to the rest of your Drive. Add
-// "https://www.googleapis.com/auth/drive.file" to oauthScopes in appsscript.json.
+// Scope: DriveApp.createFolder needs the full "https://www.googleapis.com/auth/drive" scope
+// (drive.file is not enough) — add it to oauthScopes in appsscript.json. The script runs as you
+// and only touches the spreadsheet and the backup folder.
 
 var BACKUP_KEEP_ = 12; // weekly copies kept (~3 months); older ones go to Drive trash (30-day undo)
 
@@ -12,7 +12,7 @@ function backupFolder_() {
   if (id) {
     try { return DriveApp.getFolderById(id); } catch (e) { /* folder deleted — recreate below */ }
   }
-  // drive.file can't see the spreadsheet's own folder, so the backup folder lives in My Drive root
+  // backup folder lives in My Drive root
   var folder = DriveApp.createFolder("app00046 backups");
   setSetting_("BACKUP_FOLDER_ID", folder.getId());
   log_("INFO", "backup", "created backup folder " + folder.getId());
@@ -22,7 +22,6 @@ function backupFolder_() {
 function backupSheet() {
   var folder = backupFolder_();
   var stamp = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd HHmm");
-  // SpreadsheetApp.copy() needs only the spreadsheets scope; the new file is ours, so drive.file can move it
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID).copy("app00046-flights-db backup " + stamp);
   var copy = DriveApp.getFileById(ss.getId());
   copy.moveTo(folder);

@@ -48,7 +48,7 @@ sync, flight stats with a world map, and Telegram reminders.
    Copy the `/exec` URL.
 7. Run `setupTriggers()` once (installs the hourly notification cron), then `setupBackupTrigger()`
    once (weekly Monday snapshot of the spreadsheet into an *app00046 backups* Drive folder, 12 kept;
-   needs `https://www.googleapis.com/auth/drive.file` in `appsscript.json` → `oauthScopes`;
+   needs `https://www.googleapis.com/auth/drive` in `appsscript.json` → `oauthScopes`;
    takes the first backup immediately).
 8. ⚠️ **After every later code change**: Deploy → **Manage deployments → ✏️ → Version: New**.
    (Editing code without a new version is the #1 "why didn't it change" trap.)
