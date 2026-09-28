@@ -3,7 +3,7 @@
   "use strict";
 
   var L = window.LABELS;
-  var APP_VERSION = "0.1.0";
+  var APP_VERSION = "0.2.0";
 
   function $(sel) { return document.querySelector(sel); }
   function esc(s) {
@@ -61,6 +61,7 @@
   var detailMapTimer = null; // live-map poll; cleared whenever we navigate
 
   function route() {
+    applyConnectLink();
     var h = location.hash || "#/trips";
     var m;
     if (h === "#/trips" || h === "#/") show("trips");
@@ -799,6 +800,32 @@
 
   // ---------- settings page ----------
 
+  // one-tap connect link for a new device: <app>#connect=<base64(utf8("url|token"))>.
+  // It carries the token, so it is only ever copied to the clipboard — never shown on screen.
+  function connectLink(s) {
+    var payload = btoa(unescape(encodeURIComponent(s.backendUrl + "|" + s.token)));
+    return location.origin + location.pathname + "#connect=" + encodeURIComponent(payload);
+  }
+
+  // opening a connect link saves the backend on this device, then strips the token from the URL bar.
+  // Checked on boot AND on hashchange (tapping the link while the app is already open in that tab
+  // is a same-page navigation — no reload). Returns true when the hash was a connect link.
+  function applyConnectLink() {
+    var m = /[#&]connect=([^&]+)/.exec(location.hash);
+    if (!m) return false;
+    try {
+      var raw = decodeURIComponent(escape(atob(decodeURIComponent(m[1]))));
+      var cut = raw.indexOf("|"); // split at the FIRST "|" only — the token may contain one
+      var url = raw.slice(0, cut), token = raw.slice(cut + 1);
+      if (cut > 0 && token) {
+        API.saveSettings({ backendUrl: url, token: token });
+        API.flushPending().then(function () { return API.refresh(); }).catch(function () {});
+      }
+    } catch (e) { /* malformed link — ignore */ }
+    history.replaceState(null, "", location.pathname + location.search + "#/trips");
+    return true;
+  }
+
   function renderSettings() {
     var s = API.getSettings();
     var mode = API.mode();
@@ -813,7 +840,13 @@
       field("set-token", L.settings.token, inp("set-token", s.token, "", "password")) +
       '<button class="btn small" id="btn-test">' + esc(L.settings.testConnection) + "</button> " +
       '<button class="btn small primary" id="btn-savebe">' + esc(L.settings.saveBackend) + "</button>" +
-      '<div class="msg" id="be-msg"></div></div>' +
+      '<div class="msg" id="be-msg"></div>' +
+      (mode === "backend"
+        ? '<p class="help" style="margin-top:12px">' + esc(L.settings.connectHint) + "</p>" +
+          '<button class="btn small" id="btn-connectlink">' + esc(L.settings.copyConnectLink) + "</button>" +
+          '<div class="msg" id="cl-msg"></div>'
+        : "") +
+      "</div>" +
 
       '<div class="settings-card"><div class="section-label" style="margin-top:0">' + esc(L.settings.dataSection) + "</div>" +
       '<p class="help">' + esc(L.settings.dataHint) + "</p>" +
@@ -865,6 +898,16 @@
           m("#be-msg", L.common.ok, "ok");
         })
         .catch(function (e) { m("#be-msg", L.settings.testFail + ": " + e.message, "err"); });
+    });
+
+    if ($("#btn-connectlink")) $("#btn-connectlink").addEventListener("click", function () {
+      var link = connectLink(API.getSettings());
+      var done = function () { m("#cl-msg", L.settings.connectCopied, "ok"); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(done, function () { window.prompt(L.settings.copyConnectLink, link); });
+      } else {
+        window.prompt(L.settings.copyConnectLink, link); // old browsers: let the user copy by hand
+      }
     });
 
     $("#btn-exportall").addEventListener("click", function () {
@@ -1047,16 +1090,6 @@
     $("#update-banner").textContent = L.settings.updateBanner;
     $("#fab").addEventListener("click", function () { location.hash = "#/new"; });
 
-    // one-tap connect link: #connect=<base64("url|token")> auto-configures the backend on this device
-    (function () {
-      var m = /[#&]connect=([^&]+)/.exec(location.hash);
-      if (!m) return;
-      try {
-        var parts = decodeURIComponent(escape(atob(decodeURIComponent(m[1])))).split("|");
-        if (parts[0] && parts[1]) API.saveSettings({ backendUrl: parts[0], token: parts[1] });
-      } catch (e) { /* malformed link — ignore */ }
-      location.hash = "#/trips"; // strip credentials from the URL bar
-    })();
 
     API.onChange(render);
     window.addEventListener("hashchange", route);
