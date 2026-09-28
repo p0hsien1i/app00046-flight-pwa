@@ -1067,5 +1067,16 @@
     if (API.mode() === "backend") {
       API.flushPending().then(function () { return API.refresh(); }).catch(function () {});
     }
+
+    // re-pull from the Sheet whenever the app comes back to the foreground, so a flight added on
+    // another device shows up without a relaunch. Skipped on Settings: its re-render would wipe a
+    // URL/token the user is in the middle of pasting (typical flow: switch away to copy, come back).
+    var lastPull = Date.now();
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState !== "visible" || API.mode() !== "backend") return;
+      if (currentPage === "settings" || Date.now() - lastPull < 30000) return;
+      lastPull = Date.now();
+      API.flushPending().then(function () { return API.refresh(); }).catch(function () {});
+    });
   });
 })();
