@@ -1,5 +1,5 @@
 // sw.js — app-shell precache. Bump CACHE_NAME on every release (only reliable update signal on Pages).
-var CACHE_NAME = "app00046-v4";
+var CACHE_NAME = "app00046-v5";
 
 var SHELL = [
   "./",
@@ -21,7 +21,11 @@ var SHELL = [
 
 self.addEventListener("install", function (e) {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(function (c) { return c.addAll(SHELL); })
+    // cache: "reload" bypasses the browser HTTP cache (GitHub Pages serves max-age=600) — otherwise a
+    // new worker could precache the OLD files and it took several reloads before a release showed up
+    caches.open(CACHE_NAME).then(function (c) {
+      return c.addAll(SHELL.map(function (u) { return new Request(u, { cache: "reload" }); }));
+    })
   );
 });
 

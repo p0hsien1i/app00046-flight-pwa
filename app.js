@@ -979,21 +979,34 @@
 
   // ---------- service worker + update banner ----------
 
+  // a new version found right after launch is applied at once (nothing typed yet, so a reload
+  // loses nothing); one found later — or while the flight form is open — waits for the banner tap
+  var SW_LAUNCH_MS = 15000;
+  var swLaunchAt = Date.now();
+
+  function onNewVersion(reg) {
+    var editing = /^#\/(new|flight\/)/.test(location.hash);
+    if (!editing && Date.now() - swLaunchAt < SW_LAUNCH_MS && reg.waiting) reg.waiting.postMessage("skipWaiting");
+    else showUpdateBanner(reg);
+  }
+
   function initSw() {
     if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register("sw.js").then(function (reg) {
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(function (reg) {
       function watch(worker) {
         worker.addEventListener("statechange", function () {
-          if (worker.state === "installed" && navigator.serviceWorker.controller) showUpdateBanner(reg);
+          if (worker.state === "installed" && navigator.serviceWorker.controller) onNewVersion(reg);
         });
       }
-      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner(reg);
+      if (reg.waiting && navigator.serviceWorker.controller) onNewVersion(reg);
       if (reg.installing) watch(reg.installing);
       reg.addEventListener("updatefound", function () { if (reg.installing) watch(reg.installing); });
+      reg.update(); // check for a new release on every launch, not only when the browser gets round to it
     });
     document.addEventListener("visibilitychange", function () {
-      if (document.visibilityState === "visible" && navigator.serviceWorker.getRegistration)
-        navigator.serviceWorker.getRegistration().then(function (r) { if (r) r.update(); });
+      if (document.visibilityState !== "visible" || !navigator.serviceWorker.getRegistration) return;
+      swLaunchAt = Date.now(); // coming back to the home-screen app counts as a fresh launch
+      navigator.serviceWorker.getRegistration().then(function (r) { if (r) r.update(); });
     });
     var refreshed = false;
     navigator.serviceWorker.addEventListener("controllerchange", function () {
