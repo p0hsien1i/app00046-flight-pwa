@@ -3,7 +3,7 @@
   "use strict";
 
   var L = window.LABELS;
-  var APP_VERSION = "0.2.0";
+  var APP_VERSION = "0.3.0";
 
   function $(sel) { return document.querySelector(sel); }
   function esc(s) {
@@ -194,6 +194,8 @@
 
   var expandedId = null;
 
+  var showPast = false; // per session — the list opens on upcoming flights only
+
   function renderTrips() {
     var flights = sortedFlights();
     var now = Date.now();
@@ -219,12 +221,21 @@
         html += '<div class="section-label">' + esc(L.trips.upcoming) + "</div>";
         upcoming.forEach(function (f) { html += cardHtml(f, f.id === expandedId); });
       }
+      if (!upcoming.length) html += '<div class="empty-state">' + esc(L.trips.noUpcoming) + "</div>";
+      // flown flights stay out of the way: collapsed behind a toggle (still counted in Stats)
       if (past.length) {
-        html += '<div class="section-label">' + esc(L.trips.past) + "</div>";
-        past.forEach(function (f) { html += cardHtml(f, false); });
+        html += '<button class="btn small" id="btn-togglepast" style="margin-top:16px">' +
+          esc((showPast ? L.trips.hidePast : L.trips.showPast).replace("{n}", past.length)) + "</button>";
+        if (showPast) {
+          html += '<div class="section-label">' + esc(L.trips.past) + "</div>";
+          past.forEach(function (f) { html += cardHtml(f, false); });
+        }
       }
     }
     $("#trips-list").innerHTML = html;
+    if ($("#btn-togglepast")) $("#btn-togglepast").addEventListener("click", function () {
+      showPast = !showPast; renderTrips();
+    });
 
     if (expandedId) {
       var f = flights.find(function (x) { return x.id === expandedId; });
@@ -517,7 +528,14 @@
       var d2 = window.ICS.zonedToUtc(out.arr_time_local, out.arr_tz);
       if (d1 && d2 && d2 <= d1) { msg(L.detail.invalidTimes, "err"); return; }
       API.upsert(out).then(function () { location.hash = "#/trips"; })
-        .catch(function (e) { msg(String(e.message || e), "err"); });
+        .catch(function (e) {
+          if (e.code !== "conflict") { msg(String(e.message || e), "err"); return; }
+          // the Sheet had a newer version: show it (already reloaded) so the edit is redone on top of it
+          history.replaceState(null, "", "#/flight/" + encodeURIComponent(out.id));
+          renderDetail(out.id);
+          var el = $("#detail-msg");
+          if (el) { el.textContent = L.detail.conflict; el.className = "msg err"; }
+        });
     });
 
     if (!isNew) {
@@ -819,7 +837,7 @@
       var url = raw.slice(0, cut), token = raw.slice(cut + 1);
       if (cut > 0 && token) {
         API.saveSettings({ backendUrl: url, token: token });
-        API.flushPending().then(function () { return API.refresh(); }).catch(function () {});
+        API.connectAndMerge().catch(function () {});
       }
     } catch (e) { /* malformed link — ignore */ }
     history.replaceState(null, "", location.pathname + location.search + "#/trips");
@@ -882,20 +900,12 @@
     });
 
     $("#btn-savebe").addEventListener("click", function () {
-      // capture local flights BEFORE refresh overwrites the mirror, so a first
-      // connection to an empty backend migrates them up instead of wiping them
-      var localFlights = API.flights();
       API.saveSettings({ backendUrl: $("#set-url").value.trim(), token: $("#set-token").value.trim() });
       m("#be-msg", L.common.loading);
-      API.flushPending()
-        .then(function () { return API.refresh(); })
-        .then(function (backendFlights) {
-          if ((!backendFlights || !backendFlights.length) && localFlights.length)
-            return API.bulkUpsert(localFlights).then(function () { return API.refresh(); });
-        })
-        .then(function () {
+      API.connectAndMerge() // uploads this device's own flights first, never overwrites the Sheet
+        .then(function (uploaded) {
           renderSettings(); // rebuilds the DOM — write the outcome message afterwards
-          m("#be-msg", L.common.ok, "ok");
+          m("#be-msg", uploaded ? L.settings.uploadedLocal.replace("{n}", uploaded) : L.common.ok, "ok");
         })
         .catch(function (e) { m("#be-msg", L.settings.testFail + ": " + e.message, "err"); });
     });
@@ -1092,6 +1102,9 @@
 
 
     API.onChange(render);
+    window.addEventListener("f46-conflict", function (e) {
+      window.alert(L.common.conflictQueued.replace("{n}", e.detail));
+    });
     window.addEventListener("hashchange", route);
     route();
     updateOfflineBadge();

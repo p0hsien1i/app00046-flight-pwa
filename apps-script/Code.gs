@@ -55,15 +55,16 @@ function doPost(e) {
 
     var action = body.action || "";
     if (action === "upsert") {
-      var saved = upsertFlight_(body.flight);
+      var saved = upsertFlight_(body.flight, body.base_seq);
+      if (saved.__conflict) return json_({ ok: false, error: "conflict", flight: saved.current });
       // auto-push to Google Calendar on every create/edit (syncOne_ writes back gcal_event_id;
       // removes the event when status is cancelled/deleted). Never let a calendar hiccup fail the save.
       try { syncOne_(saved); } catch (e) { log_("WARN", "upsert/autosync", String(e)); }
       return json_({ ok: true, flight: saved });
     }
     if (action === "bulkUpsert") {
-      var res = bulkUpsert_(body.flights || []);
-      return json_({ ok: true, created: res.created, updated: res.updated, errors: res.errors });
+      var res = bulkUpsert_(body.flights || [], body.onlyNew === true);
+      return json_({ ok: true, created: res.created, updated: res.updated, skipped: res.skipped, errors: res.errors });
     }
     if (action === "delete") {
       softDelete_(body.id);

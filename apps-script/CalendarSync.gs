@@ -33,6 +33,15 @@ function eventDesc_(f) {
   return lines.join("\n");
 }
 
+// write back only the calendar event id — bookkeeping, not a content change, so no seq bump and
+// no history entry (a bump here would hand the device that just saved a false version conflict)
+function setGcalId_(f) {
+  var r = findRow_(f.id);
+  if (!r) return;
+  r.gcal_event_id = f.gcal_event_id;
+  writeRow_("flights", FLIGHT_COLS, r, r.__row);
+}
+
 // returns "created" | "updated" | "removed" | "skipped"
 function syncOne_(f) {
   var cal = flightsCal_();
@@ -42,7 +51,7 @@ function syncOne_(f) {
       var ev0 = cal.getEventById(f.gcal_event_id);
       if (ev0) ev0.deleteEvent();
       f.gcal_event_id = "";
-      upsertFlight_(f);
+      setGcalId_(f);
       return "removed";
     }
     return "skipped";
@@ -68,7 +77,7 @@ function syncOne_(f) {
     ev = cal.createEvent(eventTitle_(f), start, end, { description: eventDesc_(f), location: location });
     ev.setTag("app00046_uid", f.id);
     f.gcal_event_id = ev.getId();
-    upsertFlight_(f);
+    setGcalId_(f);
     result = "created";
   }
   ev.removeAllReminders();
