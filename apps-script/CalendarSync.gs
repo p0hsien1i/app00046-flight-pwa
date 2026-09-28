@@ -105,3 +105,21 @@ function removeCalendarEvent_(id) {
     writeRow_("flights", FLIGHT_COLS, f, f.__row);
   }
 }
+
+// Run once by hand after deploying the readRows_ timezone fix: rewrites every flight row as
+// plain text (heals cells Sheets had coerced into dates), bumps seq so .ics subscribers pick up
+// the change, then re-syncs all events — earlier events were shifted by the LA UTC offset.
+function repairFlightTimes() {
+  var rows = readRows_("flights"); // already returns the displayed wall-clock text
+  var fixed = 0;
+  rows.forEach(function (r) {
+    if (!r.id) return;
+    r.seq = Number(r.seq || 0) + 1;
+    writeRow_("flights", FLIGHT_COLS, r, r.__row);
+    fixed++;
+  });
+  var res = syncAllCalendar_();
+  log_("INFO", "repair", "rewrote " + fixed + " rows as text; calendar synced " + res.synced);
+  Logger.log("rows rewritten: %s, events synced: %s", fixed, res.synced);
+  return res;
+}

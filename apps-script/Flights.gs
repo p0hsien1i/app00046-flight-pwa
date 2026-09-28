@@ -89,7 +89,9 @@ function bulkUpsert_(flights) {
   if (appends.length) {
     assertHeader_("flights", FLIGHT_COLS);
     var sh = sheet_("flights");
-    sh.getRange(sh.getLastRow() + 1, 1, appends.length, FLIGHT_COLS.length).setValues(appends);
+    sh.getRange(sh.getLastRow() + 1, 1, appends.length, FLIGHT_COLS.length)
+      .setNumberFormat("@").setValues(appends); // plain text — see writeRow_
+
   }
   return { created: created, updated: updated, errors: errors };
 }
