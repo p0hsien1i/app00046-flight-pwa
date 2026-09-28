@@ -65,8 +65,11 @@ function setupTriggers() {
 function cronHourly() {
   try {
     var now = Date.now();
+    // the app stores a derived status ("upcoming", "delayed", ...) — the old allow-list
+    // (planned/ticketed/checked-in) matched none of them, so no reminder was ever sent.
+    // Skip only finished/cancelled flights; the time windows below do the rest.
     var flights = listFlights_(false).filter(function (f) {
-      return f.status === "planned" || f.status === "ticketed" || f.status === "checked-in";
+      return f.status !== "cancelled" && f.status !== "flown";
     });
 
     flights.forEach(function (f) {
